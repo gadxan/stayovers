@@ -1,0 +1,1361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Stayover Mikocheni</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: operations console — header with period control and quick actions, tab bar, one view at a time; forms slide in as a side sheet (bottom sheet on phones). */
+:root{
+  --bg:#eef3f3; --surface:#ffffff; --sunk:#e3ebeb; --ink:#10292d; --muted:#587074; --line:#d3dfdf;
+  --accent:#0f4a5a; --on-accent:#ffffff;
+  --bottom:#0f8a85; --top:#d4861b; --on-unit:#ffffff;
+  --good:#17804a; --bad:#c23f2a; --warn:#a86a00;
+  --good-bg:#e1f3e8; --bad-bg:#fbe7e3; --warn-bg:#fdf1d8;
+  --font-display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body:"Instrument Sans", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b1618; --surface:#122226; --sunk:#0e1c1f; --ink:#e3eeee; --muted:#8ea6a9; --line:#22383c;
+  --accent:#5fc3cf; --on-accent:#05252b;
+  --bottom:#3fbdb7; --top:#f0a541; --on-unit:#06221f;
+  --good:#4ec887; --bad:#f2775f; --warn:#e9b44c;
+  --good-bg:#12321f; --bad-bg:#3a1a14; --warn-bg:#352a10;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1618; --surface:#122226; --sunk:#0e1c1f; --ink:#e3eeee; --muted:#8ea6a9; --line:#22383c;
+  --accent:#5fc3cf; --on-accent:#05252b;
+  --bottom:#3fbdb7; --top:#f0a541; --on-unit:#06221f;
+  --good:#4ec887; --bad:#f2775f; --warn:#e9b44c;
+  --good-bg:#12321f; --bad-bg:#3a1a14; --warn-bg:#352a10;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14.5px;line-height:1.45}
+.app{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 64px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:26px;font-weight:700}
+h2{font-size:18px;font-weight:700}
+h3{font-size:15px;font-weight:600}
+.num,td.n,.kpi b{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.eyebrow{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand .eyebrow{display:flex;gap:8px;align-items:center}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:8px;height:8px;border-radius:2px;display:block}
+.period{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.seg{display:inline-flex;background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:2px}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.stepper{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px}
+.stepper button{border:0;background:transparent;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;color:var(--muted)}
+.stepper button:hover{background:var(--sunk);color:var(--ink)}
+.stepper span{min-width:120px;text-align:center;font-weight:600;font-family:var(--font-display);white-space:nowrap}
+
+/* tabs */
+.tabs-wrap{overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabs{display:flex;gap:4px;min-width:max-content}
+.tabs button{border:0;background:transparent;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--ink)}
+
+/* generic */
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;text-decoration:none}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bad)}
+.btn.danger.armed{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.spread{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.banner{border-radius:var(--r);padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--line)}
+.banner.demo{background:var(--warn-bg);border-color:transparent}
+.banner.info{background:var(--surface)}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi b{font-family:var(--font-display);font-size:24px;font-weight:700;letter-spacing:-.01em}
+.kpi b.good{color:var(--good)} .kpi b.bad{color:var(--bad)}
+
+/* unit cards */
+.unit-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.unit-name{display:flex;align-items:center;gap:8px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none}
+.sw.bottom{background:var(--bottom)} .sw.top{background:var(--top)} .sw.shared{background:var(--muted)}
+.pill{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap;display:inline-block}
+.pill.lead,.pill.ok{background:var(--good-bg);color:var(--good)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.occ{height:8px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.occ i{display:block;height:100%;border-radius:99px}
+dl.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0}
+dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+dl.kv .total{border-top:1px solid var(--line);padding-top:8px;font-weight:700;color:var(--ink)}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;margin:0 -18px;padding:0 18px}
+.tbl-wrap.tall{max-height:460px;overflow:auto}
+.tbl-wrap.tall th{position:sticky;top:0;background:var(--surface);z-index:1}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{text-align:left;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--sunk)}
+tr.sub td{font-weight:700}
+tr.grand td{font-weight:700;font-size:14.5px;border-bottom:0;border-top:2px solid var(--ink)}
+tr.section td{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding-top:16px}
+tr.is-today td{background:var(--sunk)}
+.good{color:var(--good)} .bad{color:var(--bad)}
+.occupant{display:flex;gap:6px;align-items:center;white-space:nowrap}
+
+/* bars */
+.hbars{display:flex;flex-direction:column;gap:10px}
+.hbar{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center}
+.hbar .track{height:10px;background:var(--sunk);border-radius:99px;overflow:hidden;display:flex}
+.hbar .track i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+svg.chart{width:100%;height:auto;display:block}
+svg.chart text{fill:var(--muted);font-size:11px;font-family:var(--font-body)}
+svg.chart .grid{stroke:var(--line);stroke-width:1}
+.f-inc{fill:var(--accent)} .f-exp{fill:var(--muted);opacity:.55} .f-bottom{fill:var(--bottom)} .f-top{fill:var(--top)}
+.f-cur{fill:var(--sunk)}
+
+.empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r);display:flex;flex-direction:column;gap:10px;align-items:center}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters select{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+
+/* calendar */
+.cal-wrap{overflow-x:auto;margin:0 -18px;padding:0 18px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(44px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);min-width:320px}
+.cal .wd{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 6px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--sunk)}
+.cal-day{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 0 6px;min-height:84px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.cal-day.out{background:var(--sunk)}
+.cal-day.out .dn{opacity:.5}
+.cal-day .dn{font-size:12px;font-weight:600;padding:0 6px;font-variant-numeric:tabular-nums}
+.cal-day.today .dn span{background:var(--accent);color:var(--on-accent);border-radius:99px;padding:1px 7px}
+.lane{height:22px;border:0;padding:0 5px;font-size:11px;font-weight:600;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;display:block;width:100%;background:transparent;border-radius:0}
+.lane.empty:hover{background:var(--sunk);outline:1px dashed var(--line);outline-offset:-1px}
+.lane.bottom{background:var(--bottom);color:var(--on-unit)}
+.lane.top{background:var(--top);color:var(--on-unit)}
+.lane.s{margin-left:5px;width:calc(100% - 5px);border-top-left-radius:6px;border-bottom-left-radius:6px}
+.lane.e{margin-right:5px;width:calc(100% - 5px);border-top-right-radius:6px;border-bottom-right-radius:6px}
+.lane.s.e{width:calc(100% - 10px)}
+.lane.empty{cursor:pointer}
+.lane.empty:disabled{cursor:default;background:transparent;outline:0}
+
+/* ID attachments */
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumb{position:relative;width:96px;height:72px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sunk);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted);text-decoration:none}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb .x{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:13px;line-height:1}
+.thumb.busy{font-weight:500}
+
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(5,20,24,.45);z-index:50;display:flex;justify-content:flex-end}
+.sheet{background:var(--surface);width:min(540px,100%);height:100%;overflow-y:auto;padding:22px max(20px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) 20px;padding-top:calc(22px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:16px;box-shadow:-8px 0 30px rgba(0,0,0,.2)}
+@media (max-width:640px){
+  .overlay{align-items:flex-end}
+  .sheet{height:auto;max-height:92%;border-radius:16px 16px 0 0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:20px}
+  .hbar{grid-template-columns:84px 1fr auto}
+  .cal-day{min-height:70px}
+  .lane{font-size:10px;padding:0 3px;height:20px}
+}
+form.f{display:flex;flex-direction:column;gap:14px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:440px){.fgrid{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld label{font-size:12.5px;font-weight:600;color:var(--muted)}
+.fld input,.fld select,.fld textarea{padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);width:100%}
+.fld textarea{min-height:64px;resize:vertical}
+fieldset{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px 14px;margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+legend{font-weight:600;font-size:13px;padding:0 6px}
+.hint{font-size:12.5px;color:var(--muted)}
+.calc{background:var(--sunk);border-radius:8px;padding:9px 12px;font-size:13px}
+.warnbox{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:9px 12px;font-size:13px}
+.errbox{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:9px 12px;font-size:13px}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;padding-top:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:60;font-weight:600;max-width:calc(100% - 32px)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* sign-in */
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px}
+.auth-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:28px 24px;width:min(420px,100%);display:flex;flex-direction:column;gap:18px}
+.auth-card .btn.primary{justify-content:center;width:100%}
+.linkbtn{border:0;background:none;padding:0;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.okbox{background:var(--good-bg);color:var(--good);border-radius:8px;padding:9px 12px;font-size:13px}
+.account{display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:flex-end}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
+</style>
+</head>
+<body>
+
+<div class="auth" id="auth">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="eyebrow"><span class="dots"><i style="background:var(--bottom)"></i><i style="background:var(--top)"></i></span>Mikocheni, Dar es Salaam</div>
+      <h1>Stayover Mikocheni</h1>
+    </div>
+    <p class="muted" id="auth-status" style="margin:0">Connecting…</p>
+    <form class="f" id="login-form" hidden>
+      <div class="fld"><label for="login-email">Email</label><input id="login-email" type="email" autocomplete="email" required></div>
+      <div class="fld"><label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password"></div>
+      <button type="submit" class="btn primary">Sign in</button>
+      <div class="row small" style="justify-content:space-between"><button type="button" class="linkbtn" data-act="magic">Email me a sign-in link</button><button type="button" class="linkbtn" data-act="forgot">Forgot password?</button></div>
+    </form>
+    <div id="auth-msg"></div>
+    <div class="row small muted" style="justify-content:space-between;border-top:1px solid var(--line);padding-top:14px">
+      <span>Staff accounts are added by the owner.</span>
+      <button type="button" class="linkbtn" data-act="demo-on">Preview with sample data</button>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" hidden>
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow"><span class="dots"><i style="background:var(--bottom)"></i><i style="background:var(--top)"></i></span>Short-stay income · Mikocheni, Dar es Salaam</div>
+      <h1>Stayover Mikocheni</h1>
+    </div>
+    <div class="stack" style="gap:8px;align-items:flex-end">
+      <div class="account small" id="account" hidden><span class="muted" id="who"></span><button type="button" class="btn ghost sm" data-act="set-pw">Set password</button><button type="button" class="btn ghost sm" data-act="signout">Sign out</button></div>
+      <div class="row" id="quick">
+        <button type="button" class="btn sm" data-act="new-booking">+ Booking</button>
+        <button type="button" class="btn sm" data-act="new-tx" data-type="expense">+ Expense</button>
+        <button type="button" class="btn sm" data-act="new-tx" data-type="income">+ Money in</button>
+      </div>
+    </div>
+  </header>
+  <div class="toolbar">
+    <div class="period">
+      <div class="seg" role="group" aria-label="Report period">
+        <button type="button" id="p-day" data-period="day">Day</button>
+        <button type="button" id="p-week" data-period="week">Week</button>
+        <button type="button" id="p-month" data-period="month">Month</button>
+        <button type="button" id="p-year" data-period="year">Year</button>
+      </div>
+      <div class="stepper">
+        <button type="button" id="prev" aria-label="Previous period">‹</button>
+        <span id="plabel">—</span>
+        <button type="button" id="next" aria-label="Next period">›</button>
+      </div>
+      <button type="button" class="btn ghost sm" id="today-btn">Today</button>
+    </div>
+    <button type="button" class="btn primary sm" data-act="export" id="export-btn">Export to Excel</button>
+  </div>
+  <div class="tabs-wrap">
+    <nav class="tabs" id="tabs">
+      <button type="button" data-view="overview">Overview</button>
+      <button type="button" data-view="calendar">Calendar</button>
+      <button type="button" data-view="bookings">Bookings</button>
+      <button type="button" data-view="money">Profit &amp; loss</button>
+      <button type="button" data-view="electricity">Electricity</button>
+      <button type="button" data-view="recurring">Recurring costs</button>
+      <button type="button" data-view="mine">My expenses</button>
+    </nav>
+  </div>
+  <div id="banner"></div>
+  <main id="view" class="stack">
+    <div class="empty">Loading your bookings and money records…</div>
+  </main>
+</div>
+<div id="sheet-root"></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- constants ---------- */
+const UNITS = {bottom:"Bottom unit", top:"Top unit"};
+const UNIT_SHORT = {bottom:"Bottom", top:"Top", shared:"Shared"};
+const SOURCES = {airbnb:"Airbnb", instagram:"Instagram", agent:"Agent", referral:"Referral", direct:"Direct / walk-in", other:"Other"};
+const SRC_COLOR = {airbnb:"#e0565b", instagram:"#a64bc7", agent:"#2f7fd1", referral:"#17904f", direct:"#8a7a5c", other:"#7d8b8d"};
+const EXP = {rent:"Rent", salaries:"Salaries", cleaning:"Cleaning items", water:"Water bill", electricity:"Electricity (LUKU)", repairs:"Repairs & maintenance",
+  garbage:"Garbage collection", marketing:"Marketing", fees:"Commission & platform fees", internet:"Internet & TV", supplies:"Furniture & supplies",
+  transport:"Transport", taxes:"Licences & taxes", other:"Other expenses"};
+const INC = {bookings:"Bookings", extras:"Extra services", deposit:"Deposit kept", stay:"Stay payment (no booking entry)", other:"Other income"};
+const ID_TYPES = {passport:"Passport", nida:"National ID (NIDA)", license:"Driving licence", voter:"Voter ID", other:"Other"};
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const COLLS = ["bookings","transactions","recurring"];
+const VIEWS = ["overview","calendar","bookings","money","electricity","recurring","mine"];
+const STAFF_VIEWS = ["calendar","bookings","mine"];
+const BUCKET = "guest-ids";
+const ID_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nf = new Intl.NumberFormat("en-US",{maximumFractionDigits:0});
+const nf1 = new Intl.NumberFormat("en-US",{maximumFractionDigits:1});
+const tsh = n => "TSh " + nf.format(Math.round(n || 0));
+const signed = n => (n < 0 ? "−" : "") + tsh(Math.abs(n));
+const compact = n => { const a = Math.abs(n); if (a >= 1e6) return (n/1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/,"") + "M"; if (a >= 1e3) return Math.round(n/1e3) + "k"; return String(Math.round(n)); };
+const num = v => { const x = parseFloat(String(v ?? "").replace(/[, ]/g,"")); return isFinite(x) ? x : null; };
+const pct = x => isFinite(x) ? Math.round(x*100) + "%" : "—";
+const pad = n => String(n).padStart(2,"0");
+const now = new Date();
+const today = now.getFullYear() + "-" + pad(now.getMonth()+1) + "-" + pad(now.getDate());
+const todayYM = today.slice(0,7);
+const toUTC = s => { const [y,m,d] = s.split("-").map(Number); return Date.UTC(y,m-1,d); };
+const daysBetween = (a,b) => Math.round((toUTC(b) - toUTC(a)) / 86400000);
+const addMonths = (ym,k) => { let [y,m] = ym.split("-").map(Number); m += k; y += Math.floor((m-1)/12); m = ((m-1)%12+12)%12+1; return y + "-" + pad(m); };
+const addDays = (s,k) => { const d = new Date(toUTC(s) + k*86400000); return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1)+"-"+pad(d.getUTCDate()); };
+const dim = ym => { const [y,m] = ym.split("-").map(Number); return new Date(Date.UTC(y,m,0)).getUTCDate(); };
+const dow = s => new Date(toUTC(s)).getUTCDay();
+const ymLabel = ym => MONTHS[+ym.slice(5,7)-1] + " " + ym.slice(0,4);
+const dLabel = s => s ? (+s.slice(8,10)) + " " + MONTHS[+s.slice(5,7)-1] : "—";
+const dLabelY = s => s ? dLabel(s) + " " + s.slice(0,4) : "—";
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const sum = o => Object.values(o).reduce((a,b) => a + b, 0);
+const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+const nightsOf = b => (isDate(b.checkIn) && isDate(b.checkOut)) ? Math.max(0, daysBetween(b.checkIn, b.checkOut)) : 0;
+const inR = (d, r) => isDate(d) && d >= r.start && d < r.end;
+function nightsIn(b, s, e){
+  if (!isDate(b.checkIn) || !isDate(b.checkOut)) return 0;
+  const a = b.checkIn > s ? b.checkIn : s, z = b.checkOut < e ? b.checkOut : e;
+  return Math.max(0, daysBetween(a,z));
+}
+function usageOf(b){
+  const s = num(b.meterStart), e = num(b.meterEnd), t = num(b.meterTopup) || 0;
+  if (s == null || e == null) return null;
+  const u = s + t - e;
+  return u >= 0 ? u : null;
+}
+function stayStatus(b){
+  if (!isDate(b.checkIn)) return "";
+  if (b.checkIn > today) return '<span class="pill">Upcoming</span>';
+  if (isDate(b.checkOut) && b.checkOut > today) return '<span class="pill warn">In house</span>';
+  return "";
+}
+const hasId = b => (b.idDocs && b.idDocs.length) || b.idNumber;
+const urlCache = {};   // path -> {u: signed url, t: time fetched}
+const assetUrl = d => d.url || (urlCache[d.path] && urlCache[d.path].u) || "";
+
+/* ---------- state ---------- */
+const S = { view:"overview", period:"month", anchor: today, demo:false, loaded:false, canWrite:true, user:null, role:null, name:"",
+  filt:{unit:"all", source:"all"}, txFilt:"all", needPw:false };
+const live = { bookings:[], transactions:[], recurring:[] };
+let demoData = null;
+const D = () => S.demo ? demoData : live;
+let sb = null;
+const isOwner = () => S.demo || S.role === "owner";
+const viewAllowed = v => isOwner() ? v !== "mine" : STAFF_VIEWS.includes(v);
+
+/* ---------- periods ---------- */
+function weekStart(d){ return addDays(d, -((dow(d)+6)%7)); }
+function range(p = S.period, a = S.anchor){
+  if (p === "day") return {start:a, end:addDays(a,1)};
+  if (p === "week"){ const s = weekStart(a); return {start:s, end:addDays(s,7)}; }
+  if (p === "month"){ const ym = a.slice(0,7); return {start:ym + "-01", end:addMonths(ym,1) + "-01"}; }
+  const y = +a.slice(0,4); return {start:y + "-01-01", end:(y+1) + "-01-01"};
+}
+function rangeLabel(r, p){
+  const e = addDays(r.end, -1);
+  if (p === "day") return WD[dow(r.start)] + " " + dLabelY(r.start);
+  if (p === "week") return r.start.slice(0,7) === e.slice(0,7) ? (+r.start.slice(8)) + "–" + dLabelY(e) : dLabel(r.start) + " – " + dLabelY(e);
+  if (p === "month") return ymLabel(r.start.slice(0,7));
+  return r.start.slice(0,4);
+}
+const periodLabel = () => rangeLabel(range(), S.period);
+function stepPeriod(k){
+  const a = S.anchor;
+  if (S.period === "day") S.anchor = addDays(a, k);
+  else if (S.period === "week") S.anchor = addDays(a, 7*k);
+  else if (S.period === "month"){ const ym = addMonths(a.slice(0,7), k); S.anchor = ym + "-" + pad(Math.min(+a.slice(8), dim(ym))); }
+  else S.anchor = (+a.slice(0,4) + k) + a.slice(4);
+}
+/* days the units were available in a range: a year in progress counts up to the end of this month */
+function availDays(r){
+  if (S.period === "year" && r.start <= today && today < r.end){ return daysBetween(r.start, addMonths(todayYM,1) + "-01"); }
+  return daysBetween(r.start, r.end);
+}
+function subRanges(r, kind){
+  const out = [];
+  if (kind === "day"){ for (let d = r.start; d < r.end; d = addDays(d,1)) out.push({start:d, end:addDays(d,1), label: WD[dow(d)] + " " + dLabel(d)}); }
+  else if (kind === "week"){ for (let s = weekStart(r.start); s < r.end; s = addDays(s,7)){ const a = s < r.start ? r.start : s, e7 = addDays(s,7), z = e7 > r.end ? r.end : e7; out.push({start:a, end:z, label: rangeLabel({start:a, end:z}, "week").replace(/ \d{4}$/, "")}); } }
+  else { for (let m = r.start.slice(0,7); m + "-01" < r.end; m = addMonths(m,1)) out.push({start:m + "-01", end:addMonths(m,1) + "-01", label: ymLabel(m)}); }
+  return out;
+}
+
+/* ---------- calculations ---------- */
+function blank(){ return {inc:{}, exp:{}, nights:0, stays:0, stayNights:0, checkouts:0}; }
+function calc(r, days){
+  const d = D();
+  const u = {bottom:blank(), top:blank(), shared:blank()};
+  for (const b of d.bookings){
+    const k = UNITS[b.unit] ? b.unit : "bottom";
+    u[k].nights += nightsIn(b, r.start, r.end);
+    if (inR(b.checkOut, r)) u[k].checkouts++;
+    if (inR(b.checkIn, r)){
+      u[k].inc.bookings = (u[k].inc.bookings || 0) + (+b.amount || 0);
+      u[k].stays++; u[k].stayNights += nightsOf(b);
+      if (+b.fees) u[k].exp.fees = (u[k].exp.fees || 0) + (+b.fees);
+    }
+  }
+  for (const t of d.transactions){
+    if (!inR(t.date, r)) continue;
+    const k = u[t.unit] ? t.unit : "shared";
+    const box = t.type === "income" ? u[k].inc : u[k].exp;
+    const c = t.category || "other";
+    box[c] = (box[c] || 0) + (+t.amount || 0);
+  }
+  for (const k in u){ u[k].income = sum(u[k].inc); u[k].expense = sum(u[k].exp); u[k].net = u[k].income - u[k].expense; }
+  days = days || daysBetween(r.start, r.end);
+  for (const k of ["bottom","top"]){
+    u[k].sharedCost = u.shared.expense/2; u[k].sharedInc = u.shared.income/2;
+    u[k].netAfter = u[k].net + u.shared.net/2;
+    u[k].occ = u[k].nights / days;
+    u[k].adr = u[k].stayNights ? (u[k].inc.bookings || 0) / u[k].stayNights : 0;
+  }
+  const total = {income: u.bottom.income+u.top.income+u.shared.income, expense: u.bottom.expense+u.top.expense+u.shared.expense};
+  total.net = total.income - total.expense;
+  total.nights = u.bottom.nights + u.top.nights;
+  total.stays = u.bottom.stays + u.top.stays;
+  total.checkouts = u.bottom.checkouts + u.top.checkouts;
+  return {u, days, total};
+}
+function bestUnit(c){
+  const b = c.u.bottom, t = c.u.top;
+  if (!b.nights && !t.nights && !b.income && !t.income) return null;
+  if (b.netAfter !== t.netAfter) return b.netAfter > t.netAfter ? "bottom" : "top";
+  return b.nights >= t.nights ? "bottom" : "top";
+}
+function sources(r){
+  const out = {};
+  for (const b of D().bookings){
+    if (!inR(b.checkIn, r)) continue;
+    const s = SOURCES[b.source] ? b.source : "other";
+    const o = out[s] = out[s] || {count:0, nights:0, revenue:0, fees:0, bottom:0, top:0};
+    o.count++; o.nights += nightsOf(b); o.revenue += +b.amount || 0; o.fees += +b.fees || 0;
+    o[b.unit === "top" ? "top" : "bottom"]++;
+  }
+  return out;
+}
+function elec(r){
+  const d = D();
+  const p = {bottom:{kwh:0,cost:0,n:0}, top:{kwh:0,cost:0,n:0}, shared:{kwh:0,cost:0,n:0}};
+  let allK = 0, allC = 0, perK = 0, perC = 0;
+  for (const t of d.transactions){
+    if (t.type === "income" || t.category !== "electricity") continue;
+    const kwh = +t.kwh || 0, amt = +t.amount || 0;
+    if (kwh > 0){ allK += kwh; allC += amt; }
+    if (inR(t.date, r)){
+      const k = p[t.unit] ? t.unit : "shared";
+      p[k].kwh += kwh; p[k].cost += amt; p[k].n++;
+      if (kwh > 0){ perK += kwh; perC += amt; }
+    }
+  }
+  const price = perK > 0 ? perC/perK : (allK > 0 ? allC/allK : null);
+  const stays = [];
+  const used = {bottom:{kwh:0,nights:0,n:0}, top:{kwh:0,nights:0,n:0}};
+  for (const b of d.bookings){
+    if (!inR(b.checkIn, r)) continue;
+    const u = usageOf(b), n = nightsOf(b);
+    if (u != null){ const k = b.unit === "top" ? "top" : "bottom"; used[k].kwh += u; used[k].nights += n; used[k].n++; }
+    stays.push({b, u, n});
+  }
+  return {p, price, stays, used, priceFromPeriod: perK > 0};
+}
+function occupant(unit, d){ return D().bookings.find(b => b.unit === unit && isDate(b.checkIn) && isDate(b.checkOut) && b.checkIn <= d && d < b.checkOut) || null; }
+function bookingsInRange(r){ return D().bookings.filter(b => nightsIn(b, r.start, r.end) > 0 || inR(b.checkIn, r)).sort((a,b) => (a.checkIn || "").localeCompare(b.checkIn || "")); }
+function entriesInRange(r){ return D().transactions.filter(t => inR(t.date, r)).sort((a,b) => (a.date || "").localeCompare(b.date || "")); }
+const catLabel = t => t.type === "income" ? (INC[t.category] || "Income") : (EXP[t.category] || "Expense");
+
+/* ---------- charts ---------- */
+function nice(x){ if (x <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x/p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
+function barChart(groups, series, opts = {}){
+  const W = 640, H = opts.h || 210, pl = 44, pr = 8, pt = 12, pb = 24;
+  const iw = W - pl - pr, ih = H - pt - pb;
+  let max = opts.max || 0;
+  if (!opts.max) for (const g of groups) for (const v of g.values) max = Math.max(max, v);
+  const step = nice((max || 1) / 4), top = Math.max(step, Math.ceil((max || 1)/step) * step);
+  const y = v => pt + ih - (v/top) * ih;
+  const gw = iw / groups.length, bw = Math.max(3, Math.min(14, (gw - 8) / series.length));
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || "chart")}">`;
+  for (let v = 0; v <= top + 1e-9; v += step){
+    s += `<line class="grid" x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl-6}" y="${y(v)+4}" text-anchor="end">${opts.fmt ? opts.fmt(v) : compact(v)}</text>`;
+  }
+  groups.forEach((g,i) => {
+    const cx = pl + gw*i + gw/2;
+    if (g.current) s += `<rect class="f-cur" x="${pl+gw*i+1}" y="${pt}" width="${gw-2}" height="${ih}" rx="4"/>`;
+    const x0 = cx - (bw*series.length)/2;
+    g.values.forEach((v,j) => {
+      const h = Math.max(0, (v/top)*ih);
+      s += `<rect class="${series[j].cls}" x="${x0 + j*bw + 0.5}" y="${pt+ih-h}" width="${bw-1}" height="${h}" rx="2"><title>${esc(g.full || g.label)} · ${esc(series[j].name)}: ${esc(opts.tip ? opts.tip(v) : v)}</title></rect>`;
+    });
+    if (!opts.every || i % opts.every === 0) s += `<text x="${cx}" y="${H-6}" text-anchor="middle">${esc(g.label)}</text>`;
+  });
+  return s + "</svg>";
+}
+function legend(items){ return `<div class="legend">${items.map(([cls,label]) => `<span><svg width="10" height="10" aria-hidden="true"><rect class="${cls}" width="10" height="10" rx="2"/></svg>${esc(label)}</span>`).join("")}</div>`; }
+
+/* ---------- views ---------- */
+function welcome(){
+  const d = D();
+  if (S.demo || d.bookings.length || d.transactions.length || d.recurring.length || !S.loaded) return "";
+  return `<div class="card"><div class="stack" style="gap:8px"><h2>Start your records</h2>
+    <p class="muted" style="margin:0;max-width:62ch">Add each guest stay as a booking (with the guest’s ID and the LUKU meter reading at check-in and check-out), record every payment you make, and set up rent, salaries and other monthly costs once under Recurring costs. Profit, occupancy, the calendar and electricity usage fill in from there.</p></div>
+    <div class="row">${S.canWrite ? `<button class="btn primary" data-act="new-booking">Add a booking</button><button class="btn" data-act="new-tx" data-type="expense">Record an expense</button>` : ""}<button class="btn ghost" data-act="demo-on">Preview with sample data</button></div></div>`;
+}
+
+function reportTable(rows, opts){
+  const daily = opts.daily;
+  const head = daily
+    ? `<tr><th>Day</th><th>Bottom unit</th><th>Top unit</th><th class="n">Check-ins</th><th class="n">Check-outs</th><th class="n">Money in</th><th class="n">Money out</th><th class="n">Net</th></tr>`
+    : `<tr><th>${opts.label}</th><th class="n">Bottom nights</th><th class="n">Top nights</th><th class="n">Occupancy</th><th class="n">Check-ins</th><th class="n">Money in</th><th class="n">Money out</th><th class="n">Net</th></tr>`;
+  let tot = {bn:0, tn:0, ci:0, co:0, inc:0, exp:0, days:0};
+  const body = rows.map(x => {
+    const c = calc(x);
+    tot.bn += c.u.bottom.nights; tot.tn += c.u.top.nights; tot.ci += c.total.stays; tot.co += c.total.checkouts; tot.inc += c.total.income; tot.exp += c.total.expense; tot.days += c.days;
+    const net = `<td class="n ${c.total.net < 0 ? "bad" : c.total.net > 0 ? "good" : "muted"}">${c.total.net ? signed(c.total.net) : "—"}</td>`;
+    const money = `<td class="n">${c.total.income ? tsh(c.total.income) : '<span class="muted">—</span>'}</td><td class="n">${c.total.expense ? tsh(c.total.expense) : '<span class="muted">—</span>'}</td>`;
+    if (daily){
+      const occ = k => { const b = occupant(k, x.start); return b ? `<span class="occupant"><span class="sw ${k}"></span>${esc(b.guest || "Guest")}</span>` : '<span class="muted">Vacant</span>'; };
+      return `<tr class="click${x.start === today ? " is-today" : ""}" data-day="${x.start}" tabindex="0"><td>${esc(x.label)}</td><td>${occ("bottom")}</td><td>${occ("top")}</td><td class="n">${c.total.stays || "—"}</td><td class="n">${c.total.checkouts || "—"}</td>${money}${net}</tr>`;
+    }
+    return `<tr><td>${esc(x.label)}</td><td class="n">${c.u.bottom.nights} / ${c.days}</td><td class="n">${c.u.top.nights} / ${c.days}</td><td class="n">${pct(c.total.nights/(c.days*2))}</td><td class="n">${c.total.stays || "—"}</td>${money}${net}</tr>`;
+  }).join("");
+  const tnet = tot.inc - tot.exp;
+  const foot = daily
+    ? `<tr class="grand"><td>Total</td><td>${tot.bn} nights</td><td>${tot.tn} nights</td><td class="n">${tot.ci}</td><td class="n">${tot.co}</td><td class="n">${tsh(tot.inc)}</td><td class="n">${tsh(tot.exp)}</td><td class="n ${tnet < 0 ? "bad" : "good"}">${signed(tnet)}</td></tr>`
+    : `<tr class="grand"><td>Total</td><td class="n">${tot.bn}</td><td class="n">${tot.tn}</td><td class="n">${pct((tot.bn+tot.tn)/(tot.days*2))}</td><td class="n">${tot.ci}</td><td class="n">${tsh(tot.inc)}</td><td class="n">${tsh(tot.exp)}</td><td class="n ${tnet < 0 ? "bad" : "good"}">${signed(tnet)}</td></tr>`;
+  return `<div class="tbl-wrap${rows.length > 10 ? " tall" : ""}"><table><thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>`;
+}
+
+function dayReport(d){
+  const r = {start:d, end:addDays(d,1)};
+  const c = calc(r);
+  const unitBlock = k => {
+    const b = occupant(k, d);
+    const ins = D().bookings.filter(x => x.unit === k && x.checkIn === d), outs = D().bookings.filter(x => x.unit === k && x.checkOut === d);
+    return `<div class="stack" style="gap:6px"><div class="unit-name"><span class="sw ${k}"></span><h3>${UNITS[k]}</h3></div>
+      <dl class="kv"><dt>Tonight</dt><dd>${b ? `<a href="#" data-edit-booking="${esc(b.id)}" class="good" style="text-decoration:none">${esc(b.guest || "Guest")}</a>` : '<span class="muted">Vacant</span>'}</dd>
+      <dt>Checking in</dt><dd>${ins.length ? ins.map(x => esc(x.guest || "Guest")).join(", ") : "—"}</dd>
+      <dt>Checking out</dt><dd>${outs.length ? outs.map(x => esc(x.guest || "Guest")).join(", ") : "—"}</dd>
+      ${b ? `<dt>ID on file</dt><dd>${hasId(b) ? '<span class="pill ok">Yes</span>' : '<span class="pill warn">Missing</span>'}</dd>` : ""}</dl></div>`;
+  };
+  const ents = entriesInRange(r);
+  const bks = D().bookings.filter(b => b.checkIn === d);
+  return `<div class="card"><div class="spread"><h3>Daily report · ${esc(rangeLabel(r,"day"))}</h3><span class="small muted">${c.total.nights} of 2 units occupied tonight</span></div>
+    <div class="grid2">${unitBlock("bottom")}${unitBlock("top")}</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Money movement</th><th>Unit</th><th>Note</th><th class="n">Amount</th></tr></thead><tbody>
+      ${bks.map(b => `<tr class="click" data-edit-booking="${esc(b.id)}" tabindex="0"><td>Booking · ${esc(b.guest || "Guest")}</td><td>${UNIT_SHORT[b.unit] || ""}</td><td class="muted">${SOURCES[b.source] || ""} · ${nightsOf(b)} nights</td><td class="n good">+${tsh(b.amount)}</td></tr>${+b.fees ? `<tr><td>Commission / fee</td><td>${UNIT_SHORT[b.unit] || ""}</td><td class="muted">${esc(b.guest || "")}</td><td class="n">−${tsh(b.fees)}</td></tr>` : ""}`).join("")}
+      ${ents.map(t => `<tr class="click" data-edit-tx="${esc(t.id)}" tabindex="0"><td>${esc(catLabel(t))}</td><td>${UNIT_SHORT[t.unit] || "Shared"}</td><td class="muted">${esc(t.note || "")}</td><td class="n ${t.type === "income" ? "good" : ""}">${t.type === "income" ? "+" : "−"}${tsh(t.amount)}</td></tr>`).join("")}
+      ${!bks.length && !ents.length ? '<tr><td colspan="4" class="muted">No money in or out on this day</td></tr>' : ""}
+      <tr class="grand"><td colspan="3">Net for the day</td><td class="n ${c.total.net < 0 ? "bad" : "good"}">${signed(c.total.net)}</td></tr>
+    </tbody></table></div></div>`;
+}
+
+function vOverview(){
+  const r = range(), c = calc(r, availDays(r)), best = bestUnit(c), src = sources(r), e = elec(r);
+  const t = c.total;
+  const margin = t.income ? t.net/t.income : NaN;
+  const kpis = `<section class="kpis">
+    <div class="kpi"><span class="eyebrow">Money in</span><b>${tsh(t.income)}</b><span class="small muted">${t.stays} stay${t.stays === 1 ? "" : "s"} checked in</span></div>
+    <div class="kpi"><span class="eyebrow">Money out</span><b>${tsh(t.expense)}</b><span class="small muted">Incl. rent, staff, bills, fees</span></div>
+    <div class="kpi"><span class="eyebrow">Net profit</span><b class="${t.net < 0 ? "bad" : "good"}">${signed(t.net)}</b><span class="small muted">${isFinite(margin) ? "Margin " + pct(margin) : "No income yet"}</span></div>
+    <div class="kpi"><span class="eyebrow">Nights booked</span><b>${t.nights} <span class="small muted" style="font-family:var(--font-body);font-weight:500">of ${c.days*2}</span></b><span class="small muted">Both units · ${pct(t.nights/(c.days*2))} occupancy</span></div>
+  </section>`;
+  const unitCard = k => {
+    const x = c.u[k];
+    return `<div class="card">
+      <div class="unit-head"><div class="unit-name"><span class="sw ${k}"></span><h2>${UNITS[k]}</h2></div>${best === k ? '<span class="pill lead">Doing best</span>' : ""}</div>
+      <div class="stack" style="gap:6px"><div class="spread small"><span><b class="num">${x.nights}</b> of ${c.days} nights booked</span><span class="num">${pct(x.occ)}</span></div>
+      <div class="occ"><i style="width:${Math.min(100, x.occ*100)}%;background:var(--${k})"></i></div></div>
+      <dl class="kv">
+        <dt>Stays</dt><dd>${x.stays}</dd>
+        <dt>Average nightly rate</dt><dd>${x.adr ? tsh(x.adr) : "—"}</dd>
+        <dt>Money in</dt><dd>${tsh(x.income)}</dd>
+        <dt>Costs for this unit</dt><dd>−${tsh(x.expense)}</dd>
+        <dt>Half of shared costs</dt><dd>−${tsh(x.sharedCost)}</dd>
+        ${x.sharedInc ? `<dt>Half of shared income</dt><dd>${tsh(x.sharedInc)}</dd>` : ""}
+        <dt class="total">Net profit</dt><dd class="total ${x.netAfter < 0 ? "bad" : "good"}">${signed(x.netAfter)}</dd>
+      </dl></div>`;
+  };
+  // reports for the chosen period
+  let reports = "";
+  if (S.period === "day") reports = dayReport(r.start);
+  if (S.period === "week") reports = `<div class="card"><div class="spread"><h3>Daily report · ${esc(periodLabel())}</h3><span class="small muted">Tap a day for its full report</span></div>${reportTable(subRanges(r,"day"), {daily:true})}</div>`;
+  if (S.period === "month") reports = `<div class="card"><div class="spread"><h3>Weekly report · ${esc(periodLabel())}</h3><span class="small muted">Weeks run Monday to Sunday</span></div>${reportTable(subRanges(r,"week"), {label:"Week"})}</div>
+    <div class="card"><div class="spread"><h3>Daily report · ${esc(periodLabel())}</h3><span class="small muted">Tap a day for its full report</span></div>${reportTable(subRanges(r,"day"), {daily:true})}</div>`;
+  if (S.period === "year") reports = `<div class="card"><h3>Monthly report · ${esc(periodLabel())}</h3>${reportTable(subRanges(r,"month"), {label:"Month"})}</div>
+    <div class="card"><div class="spread"><h3>Weekly report · ${esc(periodLabel())}</h3><span class="small muted">Weeks run Monday to Sunday</span></div>${reportTable(subRanges(r,"week"), {label:"Week"})}</div>`;
+  // trend: daily bars for day/week, monthly otherwise
+  let trend;
+  if (S.period === "day" || S.period === "week"){
+    const end = addDays(r.end, -1), days = Array.from({length:14}, (_,i) => addDays(end, i-13));
+    const g = days.map(d => { const cc = calc({start:d, end:addDays(d,1)}); return {label:(+d.slice(8)) + "", full: WD[dow(d)] + " " + dLabel(d), values:[cc.total.income, cc.total.expense], current: inR(d, r) && S.period === "day"}; });
+    trend = `<div class="card"><div class="spread"><h3>Money in and out, last 14 days</h3>${legend([["f-inc","Money in"],["f-exp","Money out"]])}</div>${barChart(g, [{cls:"f-inc",name:"Money in"},{cls:"f-exp",name:"Money out"}], {label:"Daily money in and out", tip: tsh})}</div>`;
+  } else {
+    const endYM = addDays(r.end, -1).slice(0,7), ms = Array.from({length:12}, (_,i) => addMonths(endYM, i-11));
+    const g = ms.map(m => { const cc = calc({start:m + "-01", end:addMonths(m,1) + "-01"}); return {label: MONTHS[+m.slice(5)-1], full: ymLabel(m), values:[cc.total.income, cc.total.expense], current: S.period === "month" && m === endYM}; });
+    trend = `<div class="card"><div class="spread"><h3>Money in and out, last 12 months</h3>${legend([["f-inc","Money in"],["f-exp","Money out"]])}</div>${barChart(g, [{cls:"f-inc",name:"Money in"},{cls:"f-exp",name:"Money out"}], {label:"Monthly money in and out", tip: tsh})}</div>`;
+  }
+  // sources
+  const sk = Object.keys(SOURCES).filter(k => src[k]);
+  const totalStays = sk.reduce((a,k) => a + src[k].count, 0);
+  const maxRev = Math.max(1, ...sk.map(k => src[k].revenue));
+  const srcCard = `<div class="card"><div class="spread"><h3>Where guests come from</h3><span class="small muted">${totalStays} stays · ${esc(periodLabel())}</span></div>
+    ${sk.length ? `<div class="hbars">${sk.sort((a,b) => src[b].revenue - src[a].revenue).map(k => `<div class="hbar"><span>${SOURCES[k]}</span><div class="track"><i style="width:${src[k].revenue/maxRev*100}%;background:${SRC_COLOR[k]}"></i></div><span class="small num">${src[k].count} · ${compact(src[k].revenue)}</span></div>`).join("")}</div>
+    <p class="small muted" style="margin:0">Count of stays · money received. Commission paid to agents and Airbnb: ${tsh(sk.reduce((a,k) => a + src[k].fees, 0))}.</p>` : `<div class="empty small">No stays checked in during ${esc(periodLabel())}.</div>`}</div>`;
+  const eu = e.used, bought = e.p.bottom.kwh + e.p.top.kwh + e.p.shared.kwh, cost = e.p.bottom.cost + e.p.top.cost + e.p.shared.cost;
+  const perNight = k => eu[k].nights ? nf1.format(eu[k].kwh/eu[k].nights) + " kWh" : "—";
+  const elecCard = `<div class="card"><div class="spread"><h3>Electricity</h3><button class="btn ghost sm" data-go="electricity">Details →</button></div>
+    <dl class="kv">
+      <dt>LUKU tokens bought</dt><dd>${nf.format(bought)} kWh · ${tsh(cost)}</dd>
+      <dt>Average price</dt><dd>${e.price ? tsh(e.price) + " / kWh" : "—"}</dd>
+      <dt>Guest use, Bottom unit</dt><dd>${perNight("bottom")} per night</dd>
+      <dt>Guest use, Top unit</dt><dd>${perNight("top")} per night</dd>
+    </dl></div>`;
+  return welcome() + kpis + `<section class="grid2">${unitCard("bottom")}${unitCard("top")}</section>` + reports +
+    `<section class="grid2">${trend}${srcCard}</section><section class="grid2">${elecCard}</section>` +
+    `<p class="small muted" style="margin:0">Stay income counts on the day the guest checks in. Nights are counted on the dates they fall on. Costs marked “Shared” are split 50/50 between the two units.</p>`;
+}
+
+function vCalendar(){
+  const ym = S.anchor.slice(0,7), first = ym + "-01", last = ym + "-" + pad(dim(ym));
+  const start = weekStart(first), endW = addDays(weekStart(last), 7);
+  const mr = {start:first, end:addMonths(ym,1) + "-01"}, c = calc(mr);
+  let cells = "";
+  for (let d = start; d < endW; d = addDays(d,1)){
+    const out = d.slice(0,7) !== ym, isMon = dow(d) === 1;
+    const lane = k => {
+      const b = occupant(k, d);
+      if (!b) return `<button type="button" class="lane empty" data-new-at="${k}|${d}" aria-label="Add ${UNITS[k]} booking on ${dLabel(d)}"${S.canWrite ? "" : " disabled"}></button>`;
+      const s = b.checkIn === d, e = addDays(d,1) === b.checkOut;
+      const name = (b.guest || "Guest").split(" ")[0];
+      return `<button type="button" class="lane ${k}${s ? " s" : ""}${e ? " e" : ""}" data-edit-booking="${esc(b.id)}" title="${esc(b.guest || "Guest")} · ${UNITS[k]} · ${dLabel(b.checkIn)} → ${dLabel(b.checkOut)}">${s || isMon ? esc(name) : '<span class="sr">' + esc(name) + "</span>"}</button>`;
+    };
+    cells += `<div class="cal-day${out ? " out" : ""}${d === today ? " today" : ""}"><div class="dn"><span>${+d.slice(8)}</span></div>${lane("bottom")}${lane("top")}</div>`;
+  }
+  return `<div class="card"><div class="spread"><div><h2>Occupancy calendar · ${ymLabel(ym)}</h2><span class="small muted">Each day shows two lanes: Bottom unit on top, Top unit below. Tap an empty lane to book it, or a coloured bar to open the stay.</span></div>
+      ${legend([["f-bottom", "Bottom unit · " + c.u.bottom.nights + " nights · " + pct(c.u.bottom.occ)],["f-top", "Top unit · " + c.u.top.nights + " nights · " + pct(c.u.top.occ)]])}</div>
+    <div class="cal-wrap"><div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(w => `<div class="wd">${w}</div>`).join("")}${cells}</div></div>
+    <p class="small muted" style="margin:0">Bars cover the nights a guest stays. The check-out day is free for the next guest.</p></div>`;
+}
+
+function vBookings(){
+  const r = range();
+  const list = bookingsInRange(r).reverse()
+    .filter(b => S.filt.unit === "all" || b.unit === S.filt.unit)
+    .filter(b => S.filt.source === "all" || (b.source || "other") === S.filt.source);
+  const tot = list.reduce((a,b) => ({n:a.n + nightsOf(b), amt:a.amt + (+b.amount || 0)}), {n:0, amt:0});
+  const opt = (o, v) => Object.entries(o).map(([k,l]) => `<option value="${k}"${v === k ? " selected" : ""}>${esc(l)}</option>`).join("");
+  const missing = list.filter(b => b.checkIn <= today && !hasId(b)).length;
+  return `<div class="card"><div class="spread"><div><h2>Bookings</h2><span class="small muted">${list.length} stays in ${esc(periodLabel())} · ${tot.n} nights · ${tsh(tot.amt)}${missing ? ` · <span class="bad">${missing} without ID</span>` : ""}</span></div>
+    <div class="row"><div class="filters">
+      <select id="f-unit" aria-label="Filter by unit"><option value="all">Both units</option>${opt(UNITS,S.filt.unit)}</select>
+      <select id="f-source" aria-label="Filter by source"><option value="all">All sources</option>${opt(SOURCES,S.filt.source)}</select>
+    </div>${S.canWrite ? '<button class="btn primary" data-act="new-booking">Add booking</button>' : ""}</div></div>
+    ${list.length ? `<div class="tbl-wrap"><table><thead><tr><th>Stay</th><th>Unit</th><th>Guest</th><th>ID</th><th>Source</th><th class="n">Nights</th><th class="n">Received</th><th class="n">Fees</th><th class="n">kWh used</th></tr></thead><tbody>
+      ${list.map(b => { const u = usageOf(b); return `<tr class="click" data-edit-booking="${esc(b.id)}" tabindex="0">
+        <td>${dLabel(b.checkIn)} → ${dLabel(b.checkOut)} ${stayStatus(b)}</td>
+        <td><span class="occupant"><span class="sw ${b.unit === "top" ? "top" : "bottom"}"></span>${UNIT_SHORT[b.unit] || "—"}</span></td>
+        <td>${esc(b.guest || "—")}${b.origin ? `<div class="small muted">${esc(b.origin)}</div>` : ""}</td>
+        <td>${hasId(b) ? `<span class="pill ok">✓ ${b.idDocs && b.idDocs.length ? b.idDocs.length + " file" + (b.idDocs.length > 1 ? "s" : "") : "Number"}</span>` : b.checkIn <= today ? '<span class="pill warn">Missing</span>' : '<span class="muted">—</span>'}</td>
+        <td>${SOURCES[b.source] || "Other"}${b.agent ? `<div class="small muted">${esc(b.agent)}</div>` : ""}</td>
+        <td class="n">${nightsOf(b)}</td><td class="n">${tsh(b.amount)}</td><td class="n">${+b.fees ? tsh(b.fees) : "—"}</td>
+        <td class="n">${u == null ? '<span class="muted">—</span>' : nf1.format(u)}</td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty">No bookings in ${esc(periodLabel())}.${S.canWrite ? ' <button class="btn primary" data-act="new-booking">Add booking</button>' : ""}</div>`}
+  </div>`;
+}
+
+function vMoney(){
+  const r = range(), c = calc(r), u = c.u;
+  const cols = ["bottom","top","shared"];
+  const cell = v => v ? tsh(v) : '<span class="muted">—</span>';
+  const incKeys = Object.keys(INC).filter(k => cols.some(x => u[x].inc[k]));
+  const expKeys = Object.keys(EXP).filter(k => cols.some(x => u[x].exp[k]));
+  const row = (label, get) => `<tr><td>${label}</td>${cols.map(x => `<td class="n">${cell(get(u[x]))}</td>`).join("")}<td class="n">${cell(cols.reduce((a,x) => a + (get(u[x]) || 0), 0))}</td></tr>`;
+  const pl = `<div class="card"><div class="spread"><div><h2>Profit &amp; loss</h2><span class="small muted">${esc(periodLabel())}</span></div>${S.canWrite ? '<div class="row"><button class="btn" data-act="new-tx" data-type="income">+ Money in</button><button class="btn primary" data-act="new-tx" data-type="expense">+ Expense</button></div>' : ""}</div>
+    <div class="tbl-wrap"><table><thead><tr><th></th><th class="n"><span class="sw bottom"></span> Bottom</th><th class="n"><span class="sw top"></span> Top</th><th class="n">Shared</th><th class="n">Total</th></tr></thead><tbody>
+      <tr class="section"><td colspan="5">Money in</td></tr>
+      ${incKeys.length ? incKeys.map(k => row(INC[k], x => x.inc[k])).join("") : '<tr><td colspan="5" class="muted">Nothing received in this period</td></tr>'}
+      <tr class="sub"><td>Total money in</td>${cols.map(x => `<td class="n">${tsh(u[x].income)}</td>`).join("")}<td class="n">${tsh(c.total.income)}</td></tr>
+      <tr class="section"><td colspan="5">Money out</td></tr>
+      ${expKeys.length ? expKeys.map(k => row(EXP[k], x => x.exp[k])).join("") : '<tr><td colspan="5" class="muted">No costs recorded in this period</td></tr>'}
+      <tr class="sub"><td>Total money out</td>${cols.map(x => `<td class="n">${tsh(u[x].expense)}</td>`).join("")}<td class="n">${tsh(c.total.expense)}</td></tr>
+      <tr class="grand"><td>Net profit</td>${cols.map(x => `<td class="n ${u[x].net < 0 ? "bad" : ""}">${signed(u[x].net)}</td>`).join("")}<td class="n ${c.total.net < 0 ? "bad" : "good"}">${signed(c.total.net)}</td></tr>
+      <tr><td class="muted">After splitting shared 50/50</td><td class="n ${u.bottom.netAfter < 0 ? "bad" : "good"}">${signed(u.bottom.netAfter)}</td><td class="n ${u.top.netAfter < 0 ? "bad" : "good"}">${signed(u.top.netAfter)}</td><td></td><td></td></tr>
+    </tbody></table></div>
+    <p class="small muted" style="margin:0">“Bookings” and “Commission &amp; platform fees” come from the bookings list. Everything else comes from the entries below.</p></div>`;
+  const ym = S.anchor.slice(0,7), rs = recStatus(ym), pending = rs.filter(x => !x.posted);
+  const rec = `<div class="card"><div class="spread"><div><h3>Recurring costs for ${ymLabel(ym)}</h3><span class="small muted">${rs.length ? `${rs.length - pending.length} of ${rs.length} entered` : "No recurring costs set up yet"}</span></div>
+    <div class="row">${S.canWrite && pending.length ? `<button class="btn primary" data-act="post-rec">Enter ${pending.length} for ${MONTHS[+ym.slice(5)-1]} · ${tsh(pending.reduce((a,x) => a + (+x.r.amount || 0), 0))}</button>` : ""}<button class="btn ghost" data-go="recurring">Manage →</button></div></div>
+    ${rs.length ? `<div class="row">${rs.map(x => `<span class="pill ${x.posted ? "ok" : ""}">${x.posted ? "✓ " : ""}${esc(EXP[x.r.category] || x.r.category)} · ${UNIT_SHORT[x.r.unit] || "Shared"}</span>`).join("")}</div>` : ""}</div>`;
+  const entries = entriesInRange(r).reverse().filter(t => S.txFilt === "all" || t.type === S.txFilt || (S.txFilt === "expense" && t.type !== "income"));
+  const list = `<div class="card"><div class="spread"><h3>Entries · ${esc(periodLabel())}</h3>
+    <div class="row"><div class="seg" role="group" aria-label="Entry type">${[["all","All"],["income","Money in"],["expense","Money out"]].map(([k,l]) => `<button type="button" id="tf-${k}" data-txf="${k}" aria-pressed="${S.txFilt === k}">${l}</button>`).join("")}</div>
+    ${S.canWrite ? '<button class="btn sm" data-act="new-tx" data-type="expense" data-cat="other">+ Other expense</button>' : ""}</div></div>
+    ${entries.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Unit</th><th>Note</th><th class="n">Amount</th></tr></thead><tbody>
+      ${entries.map(t => `<tr class="click" data-edit-tx="${esc(t.id)}" tabindex="0"><td>${dLabel(t.date)}</td>
+        <td>${esc(catLabel(t))}${t.recurringId ? ' <span class="pill">Recurring</span>' : ""}${t.category === "electricity" && +t.kwh ? `<div class="small muted">${nf1.format(t.kwh)} kWh</div>` : ""}</td>
+        <td><span class="occupant"><span class="sw ${t.unit === "bottom" || t.unit === "top" ? t.unit : "shared"}"></span>${UNIT_SHORT[t.unit] || "Shared"}</span></td>
+        <td class="muted">${esc(t.note || "")}</td>
+        <td class="n ${t.type === "income" ? "good" : ""}">${t.type === "income" ? "+" : "−"}${tsh(t.amount)}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">No entries in ${esc(periodLabel())}.</div>`}</div>`;
+  return pl + rec + list;
+}
+
+function vElectricity(){
+  const r = range(), e = elec(r);
+  const tile = (label, val, sub) => `<div class="kpi"><span class="eyebrow">${label}</span><b>${val}</b><span class="small muted">${sub}</span></div>`;
+  const bought = e.p.bottom.kwh + e.p.top.kwh + e.p.shared.kwh, cost = e.p.bottom.cost + e.p.top.cost + e.p.shared.cost;
+  const usedK = e.used.bottom.kwh + e.used.top.kwh, usedN = e.used.bottom.nights + e.used.top.nights;
+  const kpis = `<section class="kpis">
+    ${tile("Tokens bought", nf.format(bought) + " kWh", tsh(cost) + " · " + (e.p.bottom.n + e.p.top.n + e.p.shared.n) + " purchases")}
+    ${tile("Average price", e.price ? tsh(e.price) : "—", e.price ? (e.priceFromPeriod ? "per kWh this period" : "per kWh, all-time (none bought this period)") : "Add kWh when recording LUKU purchases")}
+    ${tile("Used by guests", nf1.format(usedK) + " kWh", (e.used.bottom.n + e.used.top.n) + " stays with meter readings")}
+    ${tile("Guest cost", e.price ? tsh(usedK * e.price) : "—", usedN ? nf1.format(usedK/usedN) + " kWh per night on average" : "No readings yet")}
+  </section>`;
+  const unitRow = k => { const p = e.p[k], uu = e.used[k];
+    return `<tr><td><span class="occupant"><span class="sw ${k}"></span>${k === "shared" ? "Shared / common meter" : UNITS[k]}</span></td>
+      <td class="n">${nf.format(p.kwh)}</td><td class="n">${tsh(p.cost)}</td>
+      <td class="n">${k === "shared" ? "—" : nf1.format(uu.kwh)}</td><td class="n">${k === "shared" || !uu.nights ? "—" : nf1.format(uu.kwh/uu.nights)}</td>
+      <td class="n">${k === "shared" || !uu.nights || !e.price ? "—" : tsh(uu.kwh/uu.nights*e.price)}</td></tr>`; };
+  const units = `<div class="card"><div class="spread"><h3>By meter · ${esc(periodLabel())}</h3>${S.canWrite ? '<button class="btn primary" data-act="new-tx" data-type="expense" data-cat="electricity">Record LUKU purchase</button>' : ""}</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Meter</th><th class="n">kWh bought</th><th class="n">Spent</th><th class="n">Guest kWh</th><th class="n">kWh / night</th><th class="n">Cost / night</th></tr></thead>
+    <tbody>${unitRow("bottom")}${unitRow("top")}${e.p.shared.n ? unitRow("shared") : ""}</tbody></table></div></div>`;
+  const stays = e.stays.slice().sort((a,b) => (b.u ?? -1) - (a.u ?? -1));
+  const maxU = Math.max(1, ...stays.map(s => s.n ? (s.u || 0)/s.n : 0));
+  const stayTbl = `<div class="card"><div><h3>Usage per guest</h3><span class="small muted">LUKU meters count down: used = units at check-in + units topped up − units at check-out</span></div>
+    ${stays.length ? `<div class="tbl-wrap"><table><thead><tr><th>Guest</th><th>Unit</th><th>Stay</th><th class="n">Nights</th><th class="n">Used</th><th style="min-width:120px">Per night</th><th class="n">Est. cost</th></tr></thead><tbody>
+    ${stays.map(s => { const pn = s.n && s.u != null ? s.u/s.n : null; const k = s.b.unit === "top" ? "top" : "bottom";
+      return `<tr class="click" data-edit-booking="${esc(s.b.id)}" tabindex="0"><td>${esc(s.b.guest || "—")}</td><td>${UNIT_SHORT[k]}</td><td>${dLabel(s.b.checkIn)} → ${dLabel(s.b.checkOut)}</td><td class="n">${s.n}</td>
+      <td class="n">${s.u == null ? '<span class="pill warn">Add readings</span>' : nf1.format(s.u) + " kWh"}</td>
+      <td>${pn == null ? "" : `<div class="row" style="flex-wrap:nowrap;gap:8px"><div class="occ" style="flex:1;min-width:50px"><i style="width:${pn/maxU*100}%;background:var(--${k})"></i></div><span class="small num">${nf1.format(pn)}</span></div>`}</td>
+      <td class="n">${s.u != null && e.price ? tsh(s.u*e.price) : "—"}</td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty">No stays checked in during ${esc(periodLabel())}.</div>`}</div>`;
+  return kpis + units + stayTbl;
+}
+
+function vRecurring(){
+  const r = D().recurring.slice().sort((a,b) => (a.day || 1) - (b.day || 1));
+  const total = r.reduce((a,x) => a + (+x.amount || 0), 0);
+  return `<div class="card"><div class="spread"><div><h2>Recurring costs</h2><span class="small muted">Set these up once. Each month, enter them all from Profit &amp; loss with one click. One-off costs go in with “+ Expense”.</span></div>${S.canWrite ? '<button class="btn primary" data-act="new-rec">Add recurring cost</button>' : ""}</div>
+    ${r.length ? `<div class="tbl-wrap"><table><thead><tr><th>Cost</th><th>Unit</th><th class="n">Day of month</th><th>Note</th><th class="n">Monthly amount</th></tr></thead><tbody>
+      ${r.map(x => `<tr class="click" data-edit-rec="${esc(x.id)}" tabindex="0"><td>${esc(EXP[x.category] || x.category)}</td><td>${UNIT_SHORT[x.unit] || "Shared"}</td><td class="n">${x.day || 1}</td><td class="muted">${esc(x.note || "")}</td><td class="n">${tsh(x.amount)}</td></tr>`).join("")}
+      <tr class="grand"><td colspan="4">Fixed monthly costs</td><td class="n">${tsh(total)}</td></tr></tbody></table></div>
+      <p class="small muted" style="margin:0">To cover fixed costs alone, both units together need about ${tsh(total/60)} a night at full occupancy, or ${tsh(total/30)} a night with one unit full.</p>`
+    : `<div class="empty">Add the costs you pay every month: rent, salaries, cleaning items, water, electricity, garbage collection, marketing.${S.canWrite ? ' <button class="btn primary" data-act="new-rec">Add recurring cost</button>' : ""}</div>`}</div>`;
+}
+function vMine(){
+  const r = range(), entries = entriesInRange(r).reverse();
+  const out = entries.filter(t => t.type !== "income").reduce((a,t) => a + (+t.amount || 0), 0);
+  const inn = entries.filter(t => t.type === "income").reduce((a,t) => a + (+t.amount || 0), 0);
+  return `<div class="card"><div class="spread"><div><h2>My expenses</h2><span class="small muted">What you recorded in ${esc(periodLabel())}: ${tsh(out)} out${inn ? " · " + tsh(inn) + " in" : ""}</span></div>
+    <div class="row"><button class="btn" data-act="new-tx" data-type="expense" data-cat="electricity">LUKU purchase</button><button class="btn primary" data-act="new-tx" data-type="expense">+ Expense</button></div></div>
+    ${entries.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Unit</th><th>Note</th><th class="n">Amount</th></tr></thead><tbody>
+      ${entries.map(t => `<tr class="click" data-edit-tx="${esc(t.id)}" tabindex="0"><td>${dLabel(t.date)}</td><td>${esc(catLabel(t))}${t.category === "electricity" && +t.kwh ? `<div class="small muted">${nf1.format(t.kwh)} kWh</div>` : ""}</td>
+        <td><span class="occupant"><span class="sw ${t.unit === "bottom" || t.unit === "top" ? t.unit : "shared"}"></span>${UNIT_SHORT[t.unit] || "Shared"}</span></td><td class="muted">${esc(t.note || "")}</td>
+        <td class="n ${t.type === "income" ? "good" : ""}">${t.type === "income" ? "+" : "−"}${tsh(t.amount)}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">You haven’t recorded anything in ${esc(periodLabel())}. <button class="btn primary" data-act="new-tx" data-type="expense">+ Expense</button></div>`}
+    <p class="small muted" style="margin:0">The owner sees these together with all other costs in the profit &amp; loss report.</p></div>`;
+}
+function recStatus(ym){
+  const ids = new Set(D().transactions.map(t => t.id));
+  return D().recurring.map(r => ({r, posted: ids.has("rec-" + r.id + "-" + ym)}));
+}
+
+/* ---------- render ---------- */
+function render(){
+  $("#plabel").textContent = periodLabel();
+  for (const p of ["day","week","month","year"]) $("#p-" + p).setAttribute("aria-pressed", S.period === p);
+  if (!viewAllowed(S.view)) S.view = isOwner() ? "overview" : "calendar";
+  document.querySelectorAll("#tabs button").forEach(b => { b.hidden = !viewAllowed(b.dataset.view); if (b.dataset.view === S.view) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current"); });
+  $("#export-btn").hidden = !isOwner();
+  $("#account").hidden = !S.user || S.demo;
+  $("#who").textContent = S.user ? (S.name || S.user.email) + " · " + (S.role === "owner" ? "Owner" : "Staff") : "";
+  let ban = "";
+  if (S.demo) ban = `<div class="banner demo"><span><b>Sample data.</b> These are made-up stays and costs so you can see how the system works. Nothing you add here is saved.</span><button class="btn" data-act="demo-off">${S.user ? "Back to our records" : "Back to sign in"}</button></div>`;
+  $("#banner").innerHTML = ban;
+  if (!S.loaded && !S.demo){ $("#view").innerHTML = '<div class="empty">Loading your bookings and money records…</div>'; return; }
+  const v = {overview:vOverview, calendar:vCalendar, bookings:vBookings, money:vMoney, electricity:vElectricity, recurring:vRecurring, mine:vMine}[S.view] || vOverview;
+  $("#view").innerHTML = v();
+}
+
+/* ---------- forms ---------- */
+const opts = (o, v) => Object.entries(o).map(([k,l]) => `<option value="${k}"${v === k ? " selected" : ""}>${esc(l)}</option>`).join("");
+const unitOpts = (v, withShared) => opts(withShared ? {bottom:"Bottom unit", top:"Top unit", shared:"Both units (shared)"} : UNITS, v);
+const fld = (id, label, input, hint) => `<div class="fld"><label for="${id}">${label}</label>${input}${hint ? `<span class="hint" id="${id}-hint">${hint}</span>` : ""}</div>`;
+const inp = (id, v, attrs = "") => `<input id="${id}" name="${id}" value="${esc(v ?? "")}" ${attrs}>`;
+const money = (id, v) => inp(id, v, 'inputmode="decimal" autocomplete="off" placeholder="0"');
+
+let FS = null; // per-form state: ID files
+function openSheet(html){
+  $("#sheet-root").innerHTML = `<div class="overlay" id="overlay"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  const first = $("#sheet-root").querySelector("input:not([type=hidden]):not([type=file]),select,textarea");
+  if (first) setTimeout(() => first.focus(), 30);
+}
+function removeFiles(docs){
+  const paths = docs.map(d => d.path).filter(Boolean);
+  if (paths.length && sb && !S.demo) sb.storage.from(BUCKET).remove(paths).catch(() => {});
+}
+function closeSheet(saved){
+  if (!saved && FS && FS.added.length) removeFiles(FS.added);
+  FS = null;
+  $("#sheet-root").innerHTML = "";
+}
+function sheetActions(isEdit, label){
+  return `<div id="form-err"></div><div class="sheet-actions"><div class="row"><button type="submit" class="btn primary">${label}</button><button type="button" class="btn ghost" data-act="close">Cancel</button></div>
+    ${isEdit ? '<button type="button" class="btn danger" data-act="delete">Delete</button>' : ""}</div>`;
+}
+function pwSheet(first){
+  openSheet(`<form class="f" id="pw-form">
+    <div><span class="eyebrow">Your account</span><h2>${first ? "Choose a password" : "Set a new password"}</h2></div>
+    <p class="hint" style="margin:0">At least 8 characters. You’ll use it with your email to sign in on any phone or computer.</p>
+    ${fld("pw1","New password", '<input id="pw1" type="password" autocomplete="new-password" minlength="8" required>')}
+    ${fld("pw2","Type it again", '<input id="pw2" type="password" autocomplete="new-password" minlength="8" required>')}
+    ${sheetActions(false, "Save password")}
+  </form>`);
+}
+
+function bookingForm(id, preset = {}){
+  const b = id ? D().bookings.find(x => x.id === id) : null;
+  const ci = preset.checkIn || today;
+  const v = b || {unit: preset.unit || "bottom", source:"airbnb", checkIn: ci, checkOut: addDays(ci,2), guests:1, idType:"passport"};
+  FS = {docs: (b && b.idDocs ? b.idDocs.slice() : []), added:[], removed:[], uploading:0, bookingId: id || newId()};
+  const canUpload = S.demo || !!sb;
+  openSheet(`<form class="f" id="form" data-kind="bookings" data-id="${esc(FS.bookingId)}" data-edit="${b ? "1" : ""}">
+    <div><span class="eyebrow">${b ? "Edit booking" : "New booking"}</span><h2>${b ? esc(b.guest || "Guest stay") : "Guest stay"}</h2></div>
+    <div class="fgrid">
+      ${fld("unit","Unit",`<select id="unit">${unitOpts(v.unit)}</select>`)}
+      ${fld("source","Booked through",`<select id="source">${opts(SOURCES, v.source)}</select>`)}
+      ${fld("guest","Guest name", inp("guest", v.guest, 'autocomplete="off" required'))}
+      ${fld("phone","Phone", inp("phone", v.phone, 'inputmode="tel" autocomplete="off"'))}
+      ${fld("origin","Guest is from", inp("origin", v.origin, 'placeholder="e.g. Nairobi, Kenya" autocomplete="off"'))}
+      ${fld("agent","Agent or referrer", inp("agent", v.agent, 'placeholder="Name, if any" autocomplete="off"'))}
+      ${fld("checkIn","Check-in", inp("checkIn", v.checkIn, 'type="date" required'))}
+      ${fld("checkOut","Check-out", inp("checkOut", v.checkOut, 'type="date" required'))}
+      ${fld("amount","Amount received (TSh)", money("amount", v.amount))}
+      ${fld("fees","Commission / Airbnb fee (TSh)", money("fees", v.fees), "Counted as a cost")}
+      ${fld("guests","Number of guests", inp("guests", v.guests, 'inputmode="numeric" autocomplete="off"'))}
+    </div>
+    <div class="calc" id="b-calc"></div>
+    <div id="b-warn"></div>
+    <fieldset><legend>Guest ID</legend>
+      <div class="fgrid">
+        ${fld("idType","ID type",`<select id="idType">${opts(ID_TYPES, v.idType || "passport")}</select>`)}
+        ${fld("idNumber","ID number", inp("idNumber", v.idNumber, 'autocomplete="off"'))}
+      </div>
+      <div class="thumbs" id="id-files"></div>
+      ${canUpload ? `<div class="row"><label class="btn sm" for="idfile">Attach photo or PDF of ID</label><input type="file" id="idfile" accept="image/*,application/pdf" multiple class="sr"></div>
+        <span class="hint">Take a clear photo of the passport photo page or both sides of the ID. Files are stored privately; only signed-in team members can open them.</span>`
+        : `<span class="hint">Sign in to attach ID files. You can still type the ID number.</span>`}
+    </fieldset>
+    <fieldset><legend>LUKU meter readings (units left on the meter)</legend>
+      <div class="fgrid" style="grid-template-columns:repeat(3,1fr)">
+        ${fld("meterStart","At check-in", inp("meterStart", v.meterStart, 'inputmode="decimal" autocomplete="off"'))}
+        ${fld("meterTopup","Topped up", inp("meterTopup", v.meterTopup, 'inputmode="decimal" autocomplete="off" placeholder="0"'))}
+        ${fld("meterEnd","At check-out", inp("meterEnd", v.meterEnd, 'inputmode="decimal" autocomplete="off"'))}
+      </div><span class="hint" id="b-usage">Fill in at check-out to see this guest’s usage.</span></fieldset>
+    ${fld("notes","Notes",`<textarea id="notes">${esc(v.notes || "")}</textarea>`)}
+    ${sheetActions(!!b && isOwner(), b ? "Save changes" : "Add booking")}
+  </form>`);
+  renderThumbs();
+  updBooking();
+}
+async function signUrls(docs){
+  const fresh = Date.now() - 8*60*1000;
+  const need = docs.filter(d => d.path && !d.url && !(urlCache[d.path] && urlCache[d.path].t > fresh)).map(d => d.path);
+  if (!need.length || !sb) return false;
+  const {data} = await sb.storage.from(BUCKET).createSignedUrls(need, 600);
+  for (const p of need) urlCache[p] = {u: "", t: Date.now()};
+  for (const x of data || []) if (x.path && x.signedUrl) urlCache[x.path] = {u: x.signedUrl, t: Date.now()};
+  return true;
+}
+function renderThumbs(){
+  const el = $("#id-files"); if (!el || !FS) return;
+  el.innerHTML = FS.docs.map((d,i) => {
+    const url = assetUrl(d), t = d.type || "";
+    const showImg = url && /^image\/(jpeg|png|webp)$/.test(t);
+    const label = t === "application/pdf" ? "PDF" : /heic|heif/.test(t) ? "HEIC" : url ? "File" : "…";
+    const inner = showImg ? `<img src="${esc(url)}" alt="${esc(d.name || "Guest ID")}">` : label;
+    return `<div class="thumb">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener" title="Open ${esc(d.name || "ID file")}" style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:inherit;text-decoration:none">${inner}</a>` : inner}<button type="button" class="x" data-rm-doc="${i}" aria-label="Remove ${esc(d.name || "file")}">✕</button></div>`;
+  }).join("") + (FS.uploading ? `<div class="thumb busy">Uploading…</div>` : "");
+  signUrls(FS.docs).then(got => { if (got) renderThumbs(); }).catch(() => {});
+}
+async function uploadIds(files){
+  for (const f of files){
+    if (!ID_MIME.test(f.type)){ formError(`${f.name} isn’t a photo or PDF. Use JPG, PNG or PDF.`); continue; }
+    if (f.size > 20*1024*1024){ formError(`${f.name} is over 20 MB. Take a smaller photo.`); continue; }
+    if (S.demo){ FS.docs.push({id:newId(), name:f.name, type:f.type, url:URL.createObjectURL(f)}); renderThumbs(); continue; }
+    FS.uploading++; renderThumbs();
+    try {
+      const ext = ((f.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "")) || "bin";
+      const path = FS.bookingId + "/" + newId() + "." + ext;
+      const {error} = await sb.storage.from(BUCKET).upload(path, f, {contentType: f.type, upsert: false});
+      if (error) throw error;
+      const d = {path, name:f.name, type:f.type};
+      FS.docs.push(d); FS.added.push(d);
+    } catch (e){
+      formError(`Couldn’t upload ${f.name}. ${/row-level|policy|permission/i.test(e && e.message || "") ? "Your account isn’t allowed to add files." : "Check your connection and try again."}`);
+    } finally { if (FS){ FS.uploading--; renderThumbs(); } }
+  }
+}
+function updBooking(){
+  const f = $("#form"); if (!f || f.dataset.kind !== "bookings") return;
+  const ci = $("#checkIn").value, co = $("#checkOut").value, amt = num($("#amount").value) || 0, fees = num($("#fees").value) || 0;
+  const n = isDate(ci) && isDate(co) ? daysBetween(ci,co) : 0;
+  $("#b-calc").innerHTML = n > 0 ? `<b>${n} night${n > 1 ? "s" : ""}</b> · ${amt ? tsh(amt/n) + " per night" : "no amount yet"}${fees ? ` · ${tsh((amt-fees)/n)} per night after fees` : ""}` : `<span class="bad">Check-out must be after check-in.</span>`;
+  const unit = $("#unit").value, id = f.dataset.id;
+  const clash = n > 0 ? D().bookings.find(b => b.id !== id && b.unit === unit && isDate(b.checkIn) && isDate(b.checkOut) && b.checkIn < co && ci < b.checkOut) : null;
+  $("#b-warn").innerHTML = clash ? `<div class="warnbox">Overlaps with ${esc(clash.guest || "another guest")} (${dLabel(clash.checkIn)} → ${dLabel(clash.checkOut)}) in the ${UNITS[unit]}.</div>` : "";
+  const u = usageOf({meterStart:$("#meterStart").value, meterEnd:$("#meterEnd").value, meterTopup:$("#meterTopup").value});
+  const raw = num($("#meterStart").value) != null && num($("#meterEnd").value) != null;
+  const price = elec(range("year", isDate(ci) ? ci : today)).price;
+  $("#b-usage").innerHTML = u != null ? `<b>${nf1.format(u)} kWh used</b>${n > 0 ? ` · ${nf1.format(u/n)} kWh per night` : ""}${price ? ` · about ${tsh(u*price)}` : ""}` : raw ? '<span class="bad">Check-out reading is higher than check-in plus top-ups. Check the numbers.</span>' : "Fill in at check-out to see this guest’s usage.";
+}
+
+function txForm(id, preset = {}){
+  const t = id ? D().transactions.find(x => x.id === id) : null;
+  const v = t || {type: preset.type || "expense", date: inR(today, range()) ? today : range().start, unit:"shared", category: preset.cat || (preset.type === "income" ? "extras" : "other")};
+  if (!t && v.category === "electricity") v.unit = "bottom";
+  const incOpts = Object.fromEntries(Object.entries(INC).filter(([k]) => k !== "bookings"));
+  openSheet(`<form class="f" id="form" data-kind="transactions" data-id="${esc(id || "")}">
+    <div><span class="eyebrow">${t ? "Edit entry" : "New entry"}</span><h2>${v.type === "income" ? "Money in" : "Expense"}</h2></div>
+    <div class="seg" role="group" aria-label="Type" style="align-self:flex-start">
+      <button type="button" id="ty-expense" data-ty="expense" aria-pressed="${v.type !== "income"}">Expense</button>
+      <button type="button" id="ty-income" data-ty="income" aria-pressed="${v.type === "income"}">Money in</button>
+    </div>
+    <input type="hidden" id="type" value="${v.type === "income" ? "income" : "expense"}">
+    <div class="fgrid">
+      ${fld("category","Category",`<select id="category" data-inc='${esc(JSON.stringify(incOpts))}' data-exp='${esc(JSON.stringify(EXP))}'>${opts(v.type === "income" ? incOpts : EXP, v.category)}</select>`)}
+      ${fld("tunit","Unit",`<select id="tunit">${unitOpts(v.unit || "shared", true)}</select>`)}
+      ${fld("date","Date", inp("date", v.date, 'type="date" required'))}
+      ${fld("tamount","Amount (TSh)", money("tamount", v.amount))}
+    </div>
+    <div id="kwh-wrap" ${v.category === "electricity" && v.type !== "income" ? "" : "hidden"}>${fld("kwh","kWh on the token", inp("kwh", v.kwh, 'inputmode="decimal" autocomplete="off"'), "From the TANESCO token SMS or receipt. Used to work out the price per kWh.")}</div>
+    ${fld("note",'<span id="note-label">Note</span>', inp("note", v.note, 'autocomplete="off" placeholder="e.g. New bedsheets for Top unit"'))}
+    <div id="tx-hint"></div>
+    ${sheetActions(!!t, t ? "Save changes" : "Save entry")}
+  </form>`);
+  updTx();
+}
+function updTx(){
+  const f = $("#form"); if (!f || f.dataset.kind !== "transactions") return;
+  const cat = $("#category").value, ty = $("#type").value;
+  $("#kwh-wrap").hidden = !(ty === "expense" && cat === "electricity");
+  $("#note-label").textContent = cat === "other" ? "What was it for? (required)" : "Note";
+  $("#tx-hint").innerHTML = ty === "income" && cat === "stay" ? '<div class="warnbox">Guest stays are best entered under Bookings, so nights, source, ID and electricity are tracked too.</div>' : "";
+}
+function setTxType(ty){
+  $("#type").value = ty;
+  $("#ty-expense").setAttribute("aria-pressed", ty === "expense"); $("#ty-income").setAttribute("aria-pressed", ty === "income");
+  const sel = $("#category"); const o = JSON.parse(ty === "income" ? sel.dataset.inc : sel.dataset.exp);
+  sel.innerHTML = opts(o, ty === "income" ? "extras" : "other");
+  document.querySelector("#form h2").textContent = ty === "income" ? "Money in" : "Expense";
+  updTx();
+}
+
+function recForm(id){
+  const r = id ? D().recurring.find(x => x.id === id) : null;
+  const v = r || {category:"rent", unit:"shared", day:1};
+  openSheet(`<form class="f" id="form" data-kind="recurring" data-id="${esc(id || "")}">
+    <div><span class="eyebrow">${r ? "Edit recurring cost" : "New recurring cost"}</span><h2>Monthly cost</h2></div>
+    <div class="fgrid">
+      ${fld("rcategory","Category",`<select id="rcategory">${opts(EXP, v.category)}</select>`)}
+      ${fld("runit","Unit",`<select id="runit">${unitOpts(v.unit || "shared", true)}</select>`)}
+      ${fld("ramount","Usual amount (TSh)", money("ramount", v.amount))}
+      ${fld("rday","Paid on day", inp("rday", v.day, 'inputmode="numeric" autocomplete="off"'), "1–31")}
+    </div>
+    ${fld("rnote","Note", inp("rnote", v.note, 'autocomplete="off" placeholder="e.g. Cleaner salary"'))}
+    <p class="hint" style="margin:0">If a bill changes month to month, enter your usual amount and edit that month’s entry after it’s entered.</p>
+    ${sheetActions(!!r, r ? "Save changes" : "Add recurring cost")}
+  </form>`);
+}
+
+function formError(msg){ const el = $("#form-err"); if (el) el.innerHTML = msg ? `<div class="errbox">${esc(msg)}</div>` : ""; }
+async function submitForm(f){
+  const kind = f.dataset.kind, id = f.dataset.id || newId();
+  const val = s => (f.querySelector("#" + s)?.value || "").trim();
+  formError("");
+  let data;
+  if (kind === "bookings"){
+    if (FS && FS.uploading) return formError("Wait for the ID upload to finish.");
+    data = {unit: val("unit"), source: val("source"), guest: val("guest"), phone: val("phone"), origin: val("origin"), agent: val("agent"),
+      checkIn: val("checkIn"), checkOut: val("checkOut"), amount: num(val("amount")) || 0, fees: num(val("fees")) || 0, guests: num(val("guests")),
+      idType: val("idType"), idNumber: val("idNumber"), idDocs: (FS ? FS.docs : []).map(d => S.demo ? d : {path:d.path, name:d.name || "", type:d.type || ""}),
+      meterStart: num(val("meterStart")), meterTopup: num(val("meterTopup")), meterEnd: num(val("meterEnd")), notes: val("notes")};
+    if (!data.guest) return formError("Add the guest’s name.");
+    if (!isDate(data.checkIn) || !isDate(data.checkOut) || data.checkOut <= data.checkIn) return formError("Check-out must be after check-in.");
+  } else if (kind === "transactions"){
+    data = {type: val("type"), category: val("category"), unit: val("tunit"), date: val("date"), amount: num(val("tamount")), note: val("note")};
+    if (data.type === "expense" && data.category === "electricity") data.kwh = num(val("kwh"));
+    const old = D().transactions.find(x => x.id === id); if (old?.recurringId) data.recurringId = old.recurringId;
+    if (!isDate(data.date)) return formError("Pick a date.");
+    if (!(data.amount > 0)) return formError("Enter an amount above zero.");
+    if (data.category === "other" && !data.note) return formError("Say what this was for, e.g. “Gas cylinder refill”.");
+  } else {
+    const day = Math.round(num(val("rday")) || 1);
+    data = {category: val("rcategory"), unit: val("runit"), amount: num(val("ramount")), day: Math.min(31, Math.max(1, day)), note: val("rnote")};
+    if (!(data.amount > 0)) return formError("Enter the usual monthly amount.");
+  }
+  const existing = D()[kind].find(x => x.id === id);
+  data.createdAt = existing?.createdAt || new Date().toISOString();
+  data.updatedAt = new Date().toISOString();
+  const btn = f.querySelector('button[type="submit"]'); btn.disabled = true;
+  try {
+    await save(kind, id, data);
+    if (FS && FS.removed.length) removeFiles(FS.removed);
+    closeSheet(true);
+    toast(existing ? "Saved" : kind === "bookings" ? "Booking added" : kind === "recurring" ? "Recurring cost added" : "Entry saved");
+  } catch (e){ btn.disabled = false; formError(errText(e)); }
+}
+function errText(e){
+  const c = e && e.code, m = (e && e.message) || "";
+  if (c === "42501" || c === "denied" || /row-level security|permission/i.test(m)) return "Your account isn’t allowed to change this. Ask the owner.";
+  if (c === "auth") return "You’ve been signed out. Sign in again and retry.";
+  return "Couldn’t save. Check your connection and try again.";
+}
+
+/* ---------- storage (Supabase) ---------- */
+async function fetchAll(table){
+  const out = [];
+  for (let from = 0; ; from += 1000){
+    const {data, error} = await sb.from(table).select("id,data,created_by").order("id").range(from, from + 999);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) break;
+  }
+  return out.map(r => ({...(r.data || {}), id: r.id, _by: r.created_by}));
+}
+async function refresh(table){
+  if (!sb || !S.user) return;
+  try { live[table] = await fetchAll(table); if (!S.demo) render(); } catch (e){ console.warn("load " + table, e); }
+}
+async function save(coll, id, data){
+  if (S.demo){ const arr = demoData[coll]; const i = arr.findIndex(x => x.id === id); const row = {id, ...data}; if (i >= 0) arr[i] = row; else arr.push(row); render(); return; }
+  if (!sb || !S.user) throw {code:"auth"};
+  const clean = {...data}; delete clean.id; delete clean._by;
+  const {error} = await sb.from(coll).upsert({id, data: clean});
+  if (error) throw error;
+  await refresh(coll);
+}
+async function remove(coll, id){
+  if (S.demo){ demoData[coll] = demoData[coll].filter(x => x.id !== id); render(); return; }
+  const row = D()[coll].find(x => x.id === id);
+  const {data, error} = await sb.from(coll).delete().eq("id", id).select("id");
+  if (error) throw error;
+  if (!data || !data.length) throw {code:"denied"};
+  if (row && row.idDocs) removeFiles(row.idDocs);
+  await refresh(coll);
+}
+async function postRecurring(){
+  const ym = S.anchor.slice(0,7), pend = recStatus(ym).filter(r => !r.posted);
+  for (const {r} of pend){
+    await save("transactions", "rec-" + r.id + "-" + ym, {type:"expense", category:r.category, unit:r.unit || "shared", amount:+r.amount || 0,
+      date: ym + "-" + pad(Math.min(r.day || 1, dim(ym))), note: r.note || "", recurringId: r.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()});
+  }
+  toast(`Entered ${pend.length} recurring cost${pend.length === 1 ? "" : "s"} for ${ymLabel(ym)}`);
+}
+
+/* ---------- Excel export ---------- */
+function loadXLSX(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = () => window.XLSX ? res(window.XLSX) : rej(new Error("load")); s.onerror = () => rej(new Error("load")); document.head.appendChild(s); });
+}
+function buildWorkbook(X){
+  const r = range(), label = periodLabel(), c = calc(r, availDays(r)), u = c.u;
+  const P = v => ({t:"n", v: isFinite(v) ? v : 0, z:"0%"});
+  const sheet = (aoa, widths) => {
+    const ws = X.utils.aoa_to_sheet(aoa);
+    for (const k in ws){ if (k[0] === "!") continue; const cell = ws[k]; if (cell.t === "n" && !cell.z) cell.z = "#,##0"; }
+    ws["!cols"] = widths.map(w => ({wch:w}));
+    return ws;
+  };
+  const wb = X.utils.book_new();
+  // Summary
+  X.utils.book_append_sheet(wb, sheet([
+    ["Stayover Mikocheni — report"], ["Period", label], ["From", r.start], ["To", addDays(r.end,-1)], ["Exported", today], [],
+    ["", "Bottom unit", "Top unit", "Shared", "Total"],
+    ["Money in (TSh)", u.bottom.income, u.top.income, u.shared.income, c.total.income],
+    ["Money out (TSh)", u.bottom.expense, u.top.expense, u.shared.expense, c.total.expense],
+    ["Net profit (TSh)", u.bottom.net, u.top.net, u.shared.net, c.total.net],
+    ["Net after splitting shared 50/50", u.bottom.netAfter, u.top.netAfter, "", c.total.net],
+    ["Nights booked", u.bottom.nights, u.top.nights, "", c.total.nights],
+    ["Nights available", c.days, c.days, "", c.days*2],
+    ["Occupancy", P(u.bottom.occ), P(u.top.occ), "", P(c.total.nights/(c.days*2))],
+    ["Stays checked in", u.bottom.stays, u.top.stays, "", c.total.stays],
+    ["Average nightly rate (TSh)", u.bottom.adr, u.top.adr, "", ""],
+    ["Doing best", bestUnit(c) ? UNITS[bestUnit(c)] : "—"]
+  ], [34,16,16,14,16]), "Summary");
+  // P&L
+  const cols = ["bottom","top","shared"];
+  const pl = [["Profit & loss", label], [], ["Line", "Bottom unit", "Top unit", "Shared", "Total"], ["MONEY IN"]];
+  for (const k of Object.keys(INC)) if (cols.some(x => u[x].inc[k])) pl.push([INC[k], ...cols.map(x => u[x].inc[k] || 0), cols.reduce((a,x) => a + (u[x].inc[k] || 0), 0)]);
+  pl.push(["Total money in", ...cols.map(x => u[x].income), c.total.income], [], ["MONEY OUT"]);
+  for (const k of Object.keys(EXP)) if (cols.some(x => u[x].exp[k])) pl.push([EXP[k], ...cols.map(x => u[x].exp[k] || 0), cols.reduce((a,x) => a + (u[x].exp[k] || 0), 0)]);
+  pl.push(["Total money out", ...cols.map(x => u[x].expense), c.total.expense], [], ["Net profit", ...cols.map(x => u[x].net), c.total.net]);
+  X.utils.book_append_sheet(wb, sheet(pl, [32,16,16,14,16]), "Profit & loss");
+  // Daily
+  const daily = [["Date", "Day", "Bottom unit guest", "Top unit guest", "Check-ins", "Check-outs", "Money in (TSh)", "Money out (TSh)", "Net (TSh)"]];
+  for (const x of subRanges(r, "day")){ const cc = calc(x); const ob = occupant("bottom", x.start), ot = occupant("top", x.start);
+    daily.push([x.start, WD[dow(x.start)], ob ? ob.guest || "Guest" : "Vacant", ot ? ot.guest || "Guest" : "Vacant", cc.total.stays, cc.total.checkouts, cc.total.income, cc.total.expense, cc.total.net]); }
+  X.utils.book_append_sheet(wb, sheet(daily, [12,6,22,22,10,10,16,16,16]), "Daily");
+  // Weekly
+  const weekly = [["Week", "From", "To", "Bottom nights", "Top nights", "Days", "Occupancy", "Check-ins", "Money in (TSh)", "Money out (TSh)", "Net (TSh)"]];
+  for (const x of subRanges(r, "week")){ const cc = calc(x);
+    weekly.push([x.label, x.start, addDays(x.end,-1), cc.u.bottom.nights, cc.u.top.nights, cc.days, P(cc.total.nights/(cc.days*2)), cc.total.stays, cc.total.income, cc.total.expense, cc.total.net]); }
+  X.utils.book_append_sheet(wb, sheet(weekly, [18,12,12,14,12,8,11,10,16,16,16]), "Weekly");
+  // Bookings
+  const bk = [["Check-in", "Check-out", "Nights", "Unit", "Guest", "Phone", "Guest from", "Guests", "Source", "Agent / referrer", "Amount received (TSh)", "Fees (TSh)", "ID type", "ID number", "ID files", "Meter at check-in", "Top-up", "Meter at check-out", "kWh used", "Notes"]];
+  for (const b of bookingsInRange(r)) bk.push([b.checkIn, b.checkOut, nightsOf(b), UNITS[b.unit] || "", b.guest || "", b.phone || "", b.origin || "", b.guests ?? "", SOURCES[b.source] || "Other", b.agent || "", +b.amount || 0, +b.fees || 0,
+    ID_TYPES[b.idType] || "", b.idNumber || "", (b.idDocs || []).length, b.meterStart ?? "", b.meterTopup ?? "", b.meterEnd ?? "", usageOf(b) ?? "", b.notes || ""]);
+  X.utils.book_append_sheet(wb, sheet(bk, [12,12,7,12,20,14,18,7,14,16,16,12,16,16,8,12,8,12,10,30]), "Bookings");
+  // Entries
+  const en = [["Date", "Type", "Category", "Unit", "Amount (TSh)", "kWh", "Recurring", "Note"]];
+  for (const t of entriesInRange(r)) en.push([t.date, t.type === "income" ? "Money in" : "Expense", catLabel(t), UNIT_SHORT[t.unit] || "Shared", +t.amount || 0, t.kwh ?? "", t.recurringId ? "Yes" : "", t.note || ""]);
+  X.utils.book_append_sheet(wb, sheet(en, [12,10,26,10,14,8,10,36]), "Money in & out");
+  // Electricity
+  const e = elec(r);
+  const el = [["Average price per kWh (TSh)", e.price || ""], [], ["Guest", "Unit", "Check-in", "Check-out", "Nights", "kWh used", "kWh per night", "Est. cost (TSh)"]];
+  for (const s of e.stays) el.push([s.b.guest || "", UNITS[s.b.unit] || "", s.b.checkIn, s.b.checkOut, s.n, s.u ?? "", s.u != null && s.n ? Math.round(s.u/s.n*10)/10 : "", s.u != null && e.price ? Math.round(s.u*e.price) : ""]);
+  X.utils.book_append_sheet(wb, sheet(el, [22,12,12,12,8,10,12,14]), "Electricity");
+  // Sources
+  const src = sources(r), so = [["Source", "Stays", "Nights", "Money received (TSh)", "Fees paid (TSh)", "Bottom unit stays", "Top unit stays"]];
+  for (const k of Object.keys(SOURCES)) if (src[k]) so.push([SOURCES[k], src[k].count, src[k].nights, src[k].revenue, src[k].fees, src[k].bottom, src[k].top]);
+  X.utils.book_append_sheet(wb, sheet(so, [18,8,8,20,16,16,14]), "Guest sources");
+  return wb;
+}
+async function exportExcel(btn){
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "Preparing…";
+  try {
+    const X = await loadXLSX();
+    const wb = buildWorkbook(X);
+    window.__lastWorkbook = wb;
+    const name = ("Stayover-Mikocheni-" + S.period + "-" + periodLabel()).replace(/[–\s]+/g, "-").replace(/[^A-Za-z0-9-]/g, "") + ".xlsx";
+    X.writeFile(wb, name);
+    toast("Excel report downloaded");
+  } catch (e){
+    toast("Couldn’t build the Excel file. Check your connection and try again.");
+  } finally { btn.disabled = false; btn.textContent = old; }
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2800); }
+
+/* ---------- events ---------- */
+function go(view){ S.view = view; try { history.replaceState(null, "", "#" + view); } catch(e){} render(); window.scrollTo(0,0); }
+document.addEventListener("click", async ev => {
+  const el = ev.target.closest("button, a[data-edit-booking], tr[data-edit-booking], tr[data-edit-tx], tr[data-edit-rec], tr[data-day]");
+  if (!el) { if (ev.target.id === "overlay") closeSheet(); return; }
+  const d = el.dataset;
+  if (el.tagName === "A") ev.preventDefault();
+  if (d.view) return go(d.view);
+  if (d.go) return go(d.go);
+  if (d.period){ S.period = d.period; return render(); }
+  if (el.id === "prev" || el.id === "next"){ stepPeriod(el.id === "prev" ? -1 : 1); return render(); }
+  if (el.id === "today-btn"){ S.anchor = today; return render(); }
+  if (d.txf){ S.txFilt = d.txf; return render(); }
+  if (d.ty) return setTxType(d.ty);
+  if (d.rmDoc != null && FS){ const [x] = FS.docs.splice(+d.rmDoc, 1); if (x){ if (FS.added.includes(x)){ FS.added = FS.added.filter(a => a !== x); removeFiles([x]); } else FS.removed.push(x); } return renderThumbs(); }
+  if (d.day){ if (!isOwner()) return; S.period = "day"; S.anchor = d.day; S.view = "overview"; render(); window.scrollTo(0,0); return; }
+  if (d.newAt){ const [unit, date] = d.newAt.split("|"); return bookingForm(null, {unit, checkIn: date}); }
+  if (d.editBooking) return bookingForm(d.editBooking);
+  if (d.editTx) return txForm(d.editTx);
+  if (d.editRec) return recForm(d.editRec);
+  switch (d.act){
+    case "new-booking": return bookingForm();
+    case "new-tx": return txForm(null, {type: d.type, cat: d.cat});
+    case "new-rec": return recForm();
+    case "close": return closeSheet();
+    case "export": return exportExcel(el);
+    case "demo-on": demoData = makeDemo(); S.demo = true; showApp(); return render();
+    case "demo-off": S.demo = false; demoData = null; if (!S.user) return showAuth(); return render();
+    case "magic": return authLink("magic");
+    case "forgot": return authLink("forgot");
+    case "set-pw": return pwSheet(false);
+    case "signout": if (sb) await sb.auth.signOut(); return;
+    case "post-rec": el.disabled = true; try { await postRecurring(); } catch(e){ toast(errText(e)); el.disabled = false; } return;
+    case "delete": {
+      if (!el.classList.contains("armed")){ el.classList.add("armed"); el.textContent = "Tap again to delete"; setTimeout(() => { if (el.isConnected){ el.classList.remove("armed"); el.textContent = "Delete"; } }, 4000); return; }
+      const f = $("#form"); el.disabled = true;
+      try { await remove(f.dataset.kind, f.dataset.id); closeSheet(true); toast("Deleted"); } catch(e){ el.disabled = false; formError(errText(e)); }
+      return;
+    }
+  }
+});
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && $("#overlay")) closeSheet();
+  if (ev.key === "Enter" && ev.target.matches("tr[tabindex]")) ev.target.click();
+});
+document.addEventListener("submit", ev => {
+  ev.preventDefault();
+  if (ev.target.id === "login-form") return login();
+  if (ev.target.id === "pw-form") return savePassword(ev.target);
+  submitForm(ev.target);
+});
+document.addEventListener("input", ev => { if (ev.target.closest("#form")) updBooking(); });
+document.addEventListener("change", ev => {
+  const id = ev.target.id;
+  if (id === "f-unit"){ S.filt.unit = ev.target.value; return render(); }
+  if (id === "f-source"){ S.filt.source = ev.target.value; return render(); }
+  if (id === "idfile"){ const files = Array.from(ev.target.files || []); ev.target.value = ""; return uploadIds(files); }
+  if (id === "category") return updTx();
+  if (ev.target.closest("#form")) updBooking();
+});
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (VIEWS.includes(h) && h !== S.view){ S.view = h; render(); } });
+
+/* ---------- sample data (in memory only) ---------- */
+function makeDemo(){
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pick = a => a[Math.floor(rnd()*a.length)];
+  const names = ["Amani K.","Grace M.","Jonas P.","Fatma S.","Liam O.","Neema J.","Peter W.","Aisha R.","Sofia L.","David N.","Halima A.","Kevin T.","Zawadi B.","Mark E."];
+  const places = ["Nairobi, Kenya","Arusha","Mwanza","London, UK","Kampala, Uganda","Dodoma","Johannesburg","Berlin, Germany","Kigali, Rwanda","Zanzibar"];
+  const srcW = ["airbnb","airbnb","airbnb","instagram","instagram","agent","referral","direct"];
+  const out = {bookings:[], transactions:[], recurring:[]};
+  const start = addMonths(todayYM, -5) + "-01", end = addMonths(todayYM, 1) + "-15";
+  for (const unit of ["bottom","top"]){
+    let d = addDays(start, Math.floor(rnd()*3)), meter = 180;
+    const rate = unit === "top" ? 150000 : 120000;
+    while (d < end){
+      const n = 1 + Math.floor(rnd()*6), co = addDays(d, n), src = pick(srcW);
+      const amount = Math.round(rate * n * (0.9 + rnd()*0.2) / 5000) * 5000;
+      const fees = src === "airbnb" ? Math.round(amount*0.03) : src === "agent" ? Math.round(amount*0.1) : 0;
+      const b = {id:"demo-" + unit + d, unit, source: src, guest: pick(names), origin: pick(places), agent: src === "agent" ? "Mr. Baraka" : src === "referral" ? "Former guest" : "",
+        checkIn: d, checkOut: co, amount, fees, guests: 1 + Math.floor(rnd()*3), notes:"", idType:"passport", idNumber: d <= today && rnd() > 0.2 ? "TZ" + Math.floor(rnd()*9e6 + 1e6) : "", idDocs:[]};
+      if (co <= today){ const perN = (unit === "top" ? 9 : 7) + rnd()*6; const used = Math.round(perN*n*10)/10; let top = 0;
+        if (meter - used < 20){ top = 150; } b.meterStart = Math.round(meter*10)/10; b.meterTopup = top || null; meter = meter + top - used; b.meterEnd = Math.round(meter*10)/10; }
+      out.bookings.push(b);
+      d = addDays(co, Math.floor(rnd()*5));
+    }
+  }
+  const rec = [["rent","shared",1800000,1,"Landlord, both units"],["salaries","shared",650000,28,"Housekeeper + security"],["cleaning","shared",95000,5,"Detergent, toiletries"],
+    ["water","shared",70000,10,"DAWASA"],["garbage","shared",15000,10,"Mtaa collection"],["marketing","shared",120000,3,"Instagram ads"]];
+  rec.forEach(([category,unit,amount,day,note],i) => out.recurring.push({id:"demo-r" + i, category, unit, amount, day, note}));
+  for (let k = -5; k <= 0; k++){
+    const ym = addMonths(todayYM, k);
+    for (const r of out.recurring){ const date = ym + "-" + pad(Math.min(r.day, dim(ym))); if (date > today) continue;
+      out.transactions.push({id:"rec-" + r.id + "-" + ym, type:"expense", category:r.category, unit:r.unit, amount:r.amount + (r.category === "water" ? Math.round((rnd()-0.5)*20000/1000)*1000 : 0), date, note:r.note, recurringId:r.id}); }
+    for (const unit of ["bottom","top"]) for (const day of [4,16,26]){ const date = ym + "-" + pad(day); if (date > today) continue; const kwh = 140 + Math.round(rnd()*20);
+      out.transactions.push({id:"demo-e" + unit + ym + day, type:"expense", category:"electricity", unit, amount: Math.round(kwh*357/100)*100, kwh, date, note:"LUKU token"}); }
+    if (rnd() > 0.4){ const date = ym + "-" + pad(8 + Math.floor(rnd()*15)); if (date <= today) out.transactions.push({id:"demo-rp" + ym, type:"expense", category:"repairs", unit: pick(["bottom","top"]), amount: 40000 + Math.round(rnd()*20)*5000, date, note: pick(["Shower mixer","AC gas refill","Door lock","Fridge repair"])}); }
+    if (rnd() > 0.3){ const date = ym + "-" + pad(2 + Math.floor(rnd()*20)); if (date <= today) out.transactions.push({id:"demo-o" + ym, type:"expense", category: pick(["other","supplies","transport"]), unit: pick(["bottom","top","shared"]), amount: 15000 + Math.round(rnd()*10)*5000, date, note: pick(["Gas cylinder refill","New bedsheets","Bajaji to market","Light bulbs"])}); }
+    if (rnd() > 0.5){ const date = ym + "-" + pad(12 + Math.floor(rnd()*10)); if (date <= today) out.transactions.push({id:"demo-x" + ym, type:"income", category:"extras", unit: pick(["bottom","top"]), amount: 50000, date, note:"Airport pickup"}); }
+  }
+  return out;
+}
+
+/* ---------- boot ---------- */
+/* ---------- sign-in ---------- */
+const authMsg = (html, kind = "errbox") => { $("#auth-msg").innerHTML = html ? `<div class="${kind}">${html}</div>` : ""; };
+const redirectTo = () => location.origin + location.pathname;
+function showAuth(status){
+  $("#app").hidden = true; $("#auth").hidden = false;
+  $("#auth-status").textContent = status || "Sign in with the email the owner added for you.";
+  $("#login-form").hidden = !sb;
+  if (sb) setTimeout(() => $("#login-email").focus(), 30);
+}
+function showApp(){ $("#auth").hidden = true; $("#app").hidden = false; }
+async function login(){
+  const email = $("#login-email").value.trim(), password = $("#login-password").value;
+  if (!password) return authMsg("Enter your password, or use “Email me a sign-in link”.");
+  const btn = $("#login-form button[type=submit]"); btn.disabled = true; authMsg("");
+  const {error} = await sb.auth.signInWithPassword({email, password});
+  btn.disabled = false;
+  if (!error) return;
+  if (error.name === "AuthRetryableFetchError" || !error.status) authMsg("Can’t reach the server. Check your internet connection and try again.");
+  else authMsg(/confirm/i.test(error.message) ? "Open the invitation email first, then sign in." : "That email and password don’t match. Try again or use “Forgot password?”.");
+}
+async function authLink(kind){
+  const email = $("#login-email").value.trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return authMsg("Type your email address first.");
+  authMsg("");
+  const {error} = kind === "magic"
+    ? await sb.auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo: redirectTo()}})
+    : await sb.auth.resetPasswordForEmail(email, {redirectTo: redirectTo()});
+  if (error) return authMsg(/rate|seconds/i.test(error.message) ? "Too many emails just now. Wait a minute and try again." : "Couldn’t send the email. Check the address; only people the owner added can sign in.");
+  authMsg(`Check ${esc(email)} for an email from Stayover Mikocheni and tap the link in it. It can take a minute; check spam too.`, "okbox");
+}
+async function savePassword(f){
+  const a = $("#pw1").value, b = $("#pw2").value;
+  if (a.length < 8) return formError("Use at least 8 characters.");
+  if (a !== b) return formError("The two passwords don’t match.");
+  const btn = f.querySelector("button[type=submit]"); btn.disabled = true;
+  const {error} = await sb.auth.updateUser({password: a});
+  btn.disabled = false;
+  if (error) return formError(/different|same/i.test(error.message) ? "Choose a password different from your old one." : "Couldn’t save the password. Try again.");
+  S.needPw = false; closeSheet(true); toast("Password saved");
+}
+
+let starting = null, channel = null;
+async function start(user){
+  if (S.user && S.user.id === user.id) return;
+  if (starting) return starting;
+  starting = (async () => {
+    S.user = user;
+    const {data: p, error} = await sb.from("profiles").select("role,full_name").eq("id", user.id).maybeSingle();
+    if (error || !p){ S.user = null; showAuth("This login isn’t on the Stayover team yet. Ask the owner to add you."); await sb.auth.signOut(); return; }
+    S.role = p.role; S.name = p.full_name || "";
+    S.demo = false; S.loaded = false;
+    showApp(); render();
+    await Promise.all(COLLS.map(t => fetchAll(t).then(rows => { live[t] = rows; }).catch(e => console.warn("load " + t, e))));
+    S.loaded = true; render();
+    let pending = {};
+    channel = sb.channel("stayover-live");
+    for (const t of COLLS) channel.on("postgres_changes", {event:"*", schema:"public", table:t}, () => { clearTimeout(pending[t]); pending[t] = setTimeout(() => refresh(t), 400); });
+    channel.subscribe();
+    if (S.needPw) pwSheet(true);
+  })();
+  try { await starting; } finally { starting = null; }
+}
+function signedOut(){
+  if (channel && sb) sb.removeChannel(channel); channel = null;
+  S.user = null; S.role = null; S.loaded = false; closeSheet(true);
+  for (const t of COLLS) live[t] = [];
+  for (const k in urlCache) delete urlCache[k];
+  if (!S.demo) showAuth("You’re signed out.");
+}
+
+/* ---------- boot ---------- */
+(function initHash(){
+  const h = location.hash;
+  if (/type=(invite|recovery|signup)/.test(h)) S.needPw = /type=(invite|recovery)/.test(h);
+  const v = h.slice(1); if (VIEWS.includes(v)) S.view = v;
+})();
+(function boot(){
+  const cfg = window.STAYOVER_CONFIG || {};
+  if (!window.supabase || !cfg.supabaseUrl || /YOUR-/.test(cfg.supabaseUrl + cfg.supabaseAnonKey)){
+    return showAuth(window.supabase ? "Not connected yet: add your Supabase address and key to config.js (see SETUP.md). You can preview with sample data meanwhile." : "Couldn’t load the sign-in service. Check your internet connection and reload.");
+  }
+  sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  sb.auth.onAuthStateChange((event, session) => {
+    // run outside the callback: Supabase recommends not awaiting its own calls in here
+    setTimeout(() => {
+      if (event === "PASSWORD_RECOVERY") S.needPw = true;
+      if (event === "SIGNED_OUT") return signedOut();
+      if (session && session.user) start(session.user).then(() => { if (S.needPw && S.user && !$("#pw-form")) pwSheet(true); });
+      else if (event === "INITIAL_SESSION") showAuth();
+    }, 0);
+  });
+})();
+})();
+</script>
+</body>
+</html>
