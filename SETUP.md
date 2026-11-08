@@ -56,7 +56,7 @@ Repeat for a business partner who should also see the money.
 ## 5. Connect the app
 
 1. Open **Project Settings → API Keys** (on some projects it's **Settings → API**).
-2. Copy the **Project URL** and the **anon public** key. If your project shows a **publishable** key (`sb_publishable_…`) instead, use that.
+2. Copy the **Project URL** and the **publishable** key (`sb_publishable_…`), or on older projects the **anon public** key.
 3. Paste them into `config.js`:
 
    ```js
