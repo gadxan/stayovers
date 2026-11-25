@@ -3,3 +3,9 @@
 .env
 .env.*
 .claude/
+work/
+*.tar.gz
+*.cms
+key.pem
+*-private*.pem
+!backup/backup-public-cert.pem

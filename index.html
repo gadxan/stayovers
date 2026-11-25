@@ -274,6 +274,8 @@ legend{font-weight:600;font-size:13px;padding:0 6px}
       <button type="button" data-view="money">Profit &amp; loss</button>
       <button type="button" data-view="electricity">Electricity</button>
       <button type="button" data-view="recurring">Recurring costs</button>
+      <button type="button" data-view="team">Team</button>
+      <button type="button" data-view="history">History</button>
       <button type="button" data-view="mine">My expenses</button>
     </nav>
   </div>
@@ -301,7 +303,7 @@ const ID_TYPES = {passport:"Passport", nida:"National ID (NIDA)", license:"Drivi
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const COLLS = ["bookings","transactions","recurring"];
-const VIEWS = ["overview","calendar","bookings","money","electricity","recurring","mine"];
+const VIEWS = ["overview","calendar","bookings","money","electricity","recurring","team","history","mine"];
 const STAFF_VIEWS = ["calendar","bookings","mine"];
 const BUCKET = "guest-ids";
 const ID_MIME = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
@@ -359,6 +361,9 @@ const assetUrl = d => d.url || (urlCache[d.path] && urlCache[d.path].u) || "";
 const S = { view:"overview", period:"month", anchor: today, demo:false, loaded:false, canWrite:true, user:null, role:null, name:"",
   filt:{unit:"all", source:"all"}, txFilt:"all", needPw:false };
 const live = { bookings:[], transactions:[], recurring:[] };
+const trash = { bookings:[], transactions:[], recurring:[] };      // Recently deleted (30 days)
+let demoTrash = { bookings:[], transactions:[], recurring:[] };
+const TRASH = () => S.demo ? demoTrash : trash;
 let demoData = null;
 const D = () => S.demo ? demoData : live;
 let sb = null;
@@ -794,7 +799,9 @@ function render(){
   if (S.demo) ban = `<div class="banner demo"><span><b>Sample data.</b> These are made-up stays and costs so you can see how the system works. Nothing you add here is saved.</span><button class="btn" data-act="demo-off">${S.user ? "Back to our records" : "Back to sign in"}</button></div>`;
   $("#banner").innerHTML = ban;
   if (!S.loaded && !S.demo){ $("#view").innerHTML = '<div class="empty">Loading your bookings and money records…</div>'; return; }
-  const v = {overview:vOverview, calendar:vCalendar, bookings:vBookings, money:vMoney, electricity:vElectricity, recurring:vRecurring, mine:vMine}[S.view] || vOverview;
+  if (S.view === "team" && !T.list && !T.loading && !T.error) loadTeam();
+  if (S.view === "history" && !H.log && !H.loading && !H.error) loadHistory();
+  const v = {overview:vOverview, calendar:vCalendar, bookings:vBookings, money:vMoney, electricity:vElectricity, recurring:vRecurring, team:vTeam, history:vHistory, mine:vMine}[S.view] || vOverview;
   $("#view").innerHTML = v();
 }
 
@@ -811,12 +818,14 @@ function openSheet(html){
   const first = $("#sheet-root").querySelector("input:not([type=hidden]):not([type=file]),select,textarea");
   if (first) setTimeout(() => first.focus(), 30);
 }
-function removeFiles(docs){
-  const paths = docs.map(d => d.path).filter(Boolean);
-  if (paths.length && sb && !S.demo) sb.storage.from(BUCKET).remove(paths).catch(() => {});
+// Removed ID files are never deleted straight away: they wait 30 days in file_trash, then the
+// nightly backup job (after a successful backup) clears them.
+function removeFiles(docs, bookingId){
+  const rows = docs.map(d => d.path).filter(Boolean).map(path => ({path, booking_id: bookingId || null}));
+  if (rows.length && sb && !S.demo) sb.from("file_trash").upsert(rows, {onConflict: "path", ignoreDuplicates: true}).then(() => {}, () => {});
 }
 function closeSheet(saved){
-  if (!saved && FS && FS.added.length) removeFiles(FS.added);
+  if (!saved && FS && FS.added.length) removeFiles(FS.added, FS.bookingId);
   FS = null;
   $("#sheet-root").innerHTML = "";
 }
@@ -1021,7 +1030,7 @@ async function submitForm(f){
   const btn = f.querySelector('button[type="submit"]'); btn.disabled = true;
   try {
     await save(kind, id, data);
-    if (FS && FS.removed.length) removeFiles(FS.removed);
+    if (FS && FS.removed.length) removeFiles(FS.removed, id);
     closeSheet(true);
     toast(existing ? "Saved" : kind === "bookings" ? "Booking added" : kind === "recurring" ? "Recurring cost added" : "Entry saved");
   } catch (e){ btn.disabled = false; formError(errText(e)); }
@@ -1037,33 +1046,46 @@ function errText(e){
 async function fetchAll(table){
   const out = [];
   for (let from = 0; ; from += 1000){
-    const {data, error} = await sb.from(table).select("id,data,created_by").order("id").range(from, from + 999);
+    const {data, error} = await sb.from(table).select("id,data,created_by,deleted_at,deleted_by").order("id").range(from, from + 999);
     if (error) throw error;
     out.push(...data);
     if (data.length < 1000) break;
   }
-  return out.map(r => ({...(r.data || {}), id: r.id, _by: r.created_by}));
+  return out.map(r => ({...(r.data || {}), id: r.id, _by: r.created_by, _deletedAt: r.deleted_at, _deletedBy: r.deleted_by}));
+}
+function setRows(table, rows){
+  live[table] = rows.filter(r => !r._deletedAt);
+  trash[table] = rows.filter(r => r._deletedAt);
 }
 async function refresh(table){
   if (!sb || !S.user) return;
-  try { live[table] = await fetchAll(table); if (!S.demo) render(); } catch (e){ console.warn("load " + table, e); }
+  try { setRows(table, await fetchAll(table)); if (!S.demo) render(); } catch (e){ console.warn("load " + table, e); }
 }
 async function save(coll, id, data){
   if (S.demo){ const arr = demoData[coll]; const i = arr.findIndex(x => x.id === id); const row = {id, ...data}; if (i >= 0) arr[i] = row; else arr.push(row); render(); return; }
   if (!sb || !S.user) throw {code:"auth"};
-  const clean = {...data}; delete clean.id; delete clean._by;
+  const clean = {...data}; for (const k of ["id","_by","_deletedAt","_deletedBy"]) delete clean[k];
   const {error} = await sb.from(coll).upsert({id, data: clean});
   if (error) throw error;
   await refresh(coll);
+  H.log = null;
 }
+// "Delete" never removes anything: it moves the record to Recently deleted for 30 days.
 async function remove(coll, id){
-  if (S.demo){ demoData[coll] = demoData[coll].filter(x => x.id !== id); render(); return; }
-  const row = D()[coll].find(x => x.id === id);
-  const {data, error} = await sb.from(coll).delete().eq("id", id).select("id");
+  if (S.demo){ const row = demoData[coll].find(x => x.id === id); demoData[coll] = demoData[coll].filter(x => x.id !== id); if (row) demoTrash[coll].push({...row, _deletedAt: new Date().toISOString()}); render(); return; }
+  const {data, error} = await sb.from(coll).update({deleted_at: new Date().toISOString()}).eq("id", id).select("id");
   if (error) throw error;
   if (!data || !data.length) throw {code:"denied"};
-  if (row && row.idDocs) removeFiles(row.idDocs);
   await refresh(coll);
+  H.log = null;
+}
+async function restoreRow(coll, id){
+  if (S.demo){ const row = demoTrash[coll].find(x => x.id === id); demoTrash[coll] = demoTrash[coll].filter(x => x.id !== id); if (row){ delete row._deletedAt; demoData[coll].push(row); } render(); return; }
+  const {data, error} = await sb.from(coll).update({deleted_at: null}).eq("id", id).select("id");
+  if (error) throw error;
+  if (!data || !data.length) throw {code:"denied"};
+  await refresh(coll);
+  H.log = null;
 }
 async function postRecurring(){
   const ym = S.anchor.slice(0,7), pend = recStatus(ym).filter(r => !r.posted);
@@ -1163,7 +1185,7 @@ function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = fals
 /* ---------- events ---------- */
 function go(view){ S.view = view; try { history.replaceState(null, "", "#" + view); } catch(e){} render(); window.scrollTo(0,0); }
 document.addEventListener("click", async ev => {
-  const el = ev.target.closest("button, a[data-edit-booking], tr[data-edit-booking], tr[data-edit-tx], tr[data-edit-rec], tr[data-day]");
+  const el = ev.target.closest("button, a[data-edit-booking], tr[data-edit-booking], tr[data-edit-tx], tr[data-edit-rec], tr[data-day], tr[data-team-user]");
   if (!el) { if (ev.target.id === "overlay") closeSheet(); return; }
   const d = el.dataset;
   if (el.tagName === "A") ev.preventDefault();
@@ -1174,8 +1196,12 @@ document.addEventListener("click", async ev => {
   if (el.id === "today-btn"){ S.anchor = today; return render(); }
   if (d.txf){ S.txFilt = d.txf; return render(); }
   if (d.ty) return setTxType(d.ty);
-  if (d.rmDoc != null && FS){ const [x] = FS.docs.splice(+d.rmDoc, 1); if (x){ if (FS.added.includes(x)){ FS.added = FS.added.filter(a => a !== x); removeFiles([x]); } else FS.removed.push(x); } return renderThumbs(); }
+  if (d.rmDoc != null && FS){ const [x] = FS.docs.splice(+d.rmDoc, 1); if (x){ if (FS.added.includes(x)){ FS.added = FS.added.filter(a => a !== x); removeFiles([x], FS.bookingId); } else FS.removed.push(x); } return renderThumbs(); }
+  if (d.restore){ const [coll, id] = d.restore.split("|"); el.disabled = true; try { await restoreRow(coll, id); toast("Restored"); } catch (e){ el.disabled = false; toast(errText(e)); } return; }
+  if (d.logFilter){ H.filter = d.logFilter; return render(); }
   if (d.day){ if (!isOwner()) return; S.period = "day"; S.anchor = d.day; S.view = "overview"; render(); window.scrollTo(0,0); return; }
+  if (d.teamUser) return teamUserSheet(d.teamUser);
+  if (d.tact) return teamAction(el);
   if (d.newAt){ const [unit, date] = d.newAt.split("|"); return bookingForm(null, {unit, checkIn: date}); }
   if (d.editBooking) return bookingForm(d.editBooking);
   if (d.editTx) return txForm(d.editTx);
@@ -1186,8 +1212,12 @@ document.addEventListener("click", async ev => {
     case "new-rec": return recForm();
     case "close": return closeSheet();
     case "export": return exportExcel(el);
-    case "demo-on": demoData = makeDemo(); S.demo = true; showApp(); return render();
-    case "demo-off": S.demo = false; demoData = null; if (!S.user) return showAuth(); return render();
+    case "demo-on": demoData = makeDemo(); demoTrash = {bookings:[], transactions:[], recurring:[]}; S.demo = true; resetTeam(); H.log = null; showApp(); return render();
+    case "demo-off": S.demo = false; demoData = null; resetTeam(); H.log = null; if (!S.user) return showAuth(); return render();
+    case "history-reload": H.log = null; H.error = ""; return render();
+    case "team-add": return teamAddSheet();
+    case "team-reload": resetTeam(); return render();
+    case "gen-pw": { const t = $("#" + d.target); if (t){ t.value = genPassword(); t.select(); } return; }
     case "magic": return authLink("magic");
     case "forgot": return authLink("forgot");
     case "set-pw": return pwSheet(false);
@@ -1196,7 +1226,7 @@ document.addEventListener("click", async ev => {
     case "delete": {
       if (!el.classList.contains("armed")){ el.classList.add("armed"); el.textContent = "Tap again to delete"; setTimeout(() => { if (el.isConnected){ el.classList.remove("armed"); el.textContent = "Delete"; } }, 4000); return; }
       const f = $("#form"); el.disabled = true;
-      try { await remove(f.dataset.kind, f.dataset.id); closeSheet(true); toast("Deleted"); } catch(e){ el.disabled = false; formError(errText(e)); }
+      try { await remove(f.dataset.kind, f.dataset.id); closeSheet(true); toast(isOwner() ? "Moved to History → Recently deleted. You can restore it for 30 days." : "Deleted. An owner can restore it for 30 days."); } catch(e){ el.disabled = false; formError(errText(e)); }
       return;
     }
   }
@@ -1209,6 +1239,8 @@ document.addEventListener("submit", ev => {
   ev.preventDefault();
   if (ev.target.id === "login-form") return login();
   if (ev.target.id === "pw-form") return savePassword(ev.target);
+  if (ev.target.id === "team-add-form") return submitTeamAdd(ev.target);
+  if (ev.target.id === "team-edit-form") return submitTeamEdit(ev.target);
   submitForm(ev.target);
 });
 document.addEventListener("input", ev => { if (ev.target.closest("#form")) updBooking(); });
@@ -1218,6 +1250,7 @@ document.addEventListener("change", ev => {
   if (id === "f-source"){ S.filt.source = ev.target.value; return render(); }
   if (id === "idfile"){ const files = Array.from(ev.target.files || []); ev.target.value = ""; return uploadIds(files); }
   if (id === "category") return updTx();
+  if (ev.target.name === "ta-how"){ $("#ta-pw-wrap").hidden = !$("#ta-how-pw").checked; if ($("#ta-how-pw").checked && !$("#ta-pw").value) $("#ta-pw").value = genPassword(); return; }
   if (ev.target.closest("#form")) updBooking();
 });
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (VIEWS.includes(h) && h !== S.view){ S.view = h; render(); } });
@@ -1263,6 +1296,209 @@ function makeDemo(){
 }
 
 /* ---------- boot ---------- */
+/* ---------- team (owners) ---------- */
+const T = {list:null, me:null, loading:false, error:""};
+let demoTeamList = null;
+function resetTeam(){ T.list = null; T.me = null; T.loading = false; T.error = ""; demoTeamList = null; }
+async function callTeam(action, payload = {}){
+  if (S.demo) return demoTeam(action, payload);
+  const {data, error} = await sb.functions.invoke("team-admin", {body: {action, redirectTo: redirectTo(), ...payload}});
+  if (error){
+    let msg = "Couldn’t reach the team service. Check your connection and try again.";
+    try { const b = await error.context.json(); if (b && b.error) msg = b.error; } catch (e) {}
+    throw new Error(msg);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+function demoTeam(action, p){
+  if (!demoTeamList) demoTeamList = [
+    {id:"u1", email:"owner@example.com", name:"You (sample owner)", role:"owner", status:"active", lastSignIn:new Date().toISOString()},
+    {id:"u2", email:"neema@example.com", name:"Neema (housekeeper)", role:"staff", status:"active", lastSignIn:new Date(Date.now()-3*864e5).toISOString()},
+    {id:"u3", email:"baraka@example.com", name:"Baraka (security)", role:"staff", status:"invited", lastSignIn:null}];
+  const u = demoTeamList.find(x => x.id === p.userId);
+  if (action === "list") return {me:"u1", team: demoTeamList.map(x => ({...x}))};
+  if (action === "add"){ demoTeamList.push({id:newId(), email:p.email, name:p.name, role:p.role, status: p.password ? "active" : "invited", lastSignIn:null}); return {ok:true}; }
+  if (action === "setRole" && u) u.role = p.role;
+  if (action === "rename" && u) u.name = p.name;
+  if (action === "setDisabled" && u) u.status = p.disabled ? "disabled" : "active";
+  if (action === "remove" && u) u.status = "removed";
+  return {ok:true, email: u && u.email};
+}
+async function loadTeam(){
+  T.loading = true; T.error = "";
+  try { const r = await callTeam("list"); T.list = r.team.sort((a,b) => (a.role === b.role ? (a.name || a.email).localeCompare(b.name || b.email) : a.role === "owner" ? -1 : 1)); T.me = r.me; }
+  catch (e){ T.error = e.message; }
+  T.loading = false;
+  if (S.view === "team") render();
+}
+const statusPill = s => s === "active" ? '<span class="pill ok">Active</span>' : s === "disabled" ? '<span class="pill bad">Disabled</span>' : s === "removed" ? '<span class="pill bad">Removed</span>' : '<span class="pill warn">Invited</span>';
+const lastSeen = iso => iso ? dLabelY(iso.slice(0,10)) : '<span class="muted">Never</span>';
+function vTeam(){
+  const head = `<div class="spread"><div><h2>Team</h2><span class="small muted">${T.list ? `${T.list.length} ${T.list.length === 1 ? "person" : "people"} · ${T.list.filter(u => u.role === "owner").length} owner(s)` : "People who can sign in to Stayover Mikocheni"}</span></div>
+    <div class="row"><button class="btn ghost sm" data-act="team-reload">Refresh</button><button class="btn primary" data-act="team-add">+ Add person</button></div></div>`;
+  if (T.error) return `<div class="card">${head}<div class="errbox">${esc(T.error)}</div><div><button class="btn" data-act="team-reload">Try again</button></div></div>`;
+  if (!T.list) return `<div class="card">${head}<div class="empty">Loading the team…</div></div>`;
+  const rows = T.list.map(u => `<tr class="click" data-team-user="${esc(u.id)}" tabindex="0">
+      <td><b>${esc(u.name || "—")}</b>${u.id === T.me ? ' <span class="pill">You</span>' : ""}<div class="small muted">${esc(u.email || "")}</div></td>
+      <td>${u.role === "owner" ? '<span class="pill lead">Owner</span>' : u.role === "staff" ? '<span class="pill">Staff</span>' : '<span class="pill warn">No role</span>'}</td>
+      <td>${statusPill(u.status)}</td><td>${lastSeen(u.lastSignIn)}</td><td class="n"><span class="btn sm">Manage</span></td></tr>`).join("");
+  return `<div class="card">${head}
+    <div class="tbl-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Last signed in</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <dl class="kv small" style="grid-template-columns:auto 1fr;max-width:70ch"><dt><span class="pill lead">Owner</span></dt><dd style="text-align:left">Sees everything: overview, profit &amp; loss, all expenses, recurring costs, Excel export, and this Team page.</dd>
+    <dt><span class="pill">Staff</span></dt><dd style="text-align:left">Calendar and bookings (with guest IDs and meter readings), and their own expenses. Can’t see profits or other people’s expenses.</dd></dl></div>`;
+}
+const genPassword = () => { const c = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"; const a = new Uint32Array(12); crypto.getRandomValues(a); return Array.from(a, n => c[n % c.length]).join(""); };
+function teamAddSheet(){
+  openSheet(`<form class="f" id="team-add-form">
+    <div><span class="eyebrow">Team</span><h2>Add a person</h2></div>
+    <div class="fgrid">
+      ${fld("ta-name","Name", inp("ta-name", "", 'autocomplete="off" placeholder="e.g. Neema" required'))}
+      ${fld("ta-email","Email", inp("ta-email", "", 'type="email" autocomplete="off" required'))}
+      ${fld("ta-role","Role",`<select id="ta-role"><option value="staff" selected>Staff</option><option value="owner">Owner</option></select>`)}
+    </div>
+    <fieldset><legend>How they get in</legend>
+      <label class="row"><input type="radio" name="ta-how" id="ta-how-invite" value="invite" checked> Email them an invitation. They choose their own password.</label>
+      <label class="row"><input type="radio" name="ta-how" id="ta-how-pw" value="password"> Set a password now and give it to them.</label>
+      <div id="ta-pw-wrap" hidden><div class="row" style="flex-wrap:nowrap">${inp("ta-pw", "", 'type="text" autocomplete="off" minlength="8" style="flex:1"')}<button type="button" class="btn sm" data-act="gen-pw" data-target="ta-pw">Generate</button></div>
+        <span class="hint">Tell them in person or by phone, not in a group chat. They can change it later with “Set password”.</span></div>
+    </fieldset>
+    ${sheetActions(false, "Add to team")}
+  </form>`);
+}
+function teamUserSheet(id){
+  const u = (T.list || []).find(x => x.id === id); if (!u) return;
+  const self = u.id === T.me;
+  openSheet(`<form class="f" id="team-edit-form" data-uid="${esc(u.id)}">
+    <div><span class="eyebrow">Team member</span><h2>${esc(u.name || u.email)}</h2><span class="small muted">${esc(u.email || "")} · ${statusPill(u.status)}</span></div>
+    <fieldset><legend>Details</legend><div class="fgrid">
+      ${fld("tu-name","Name", inp("tu-name", u.name, 'autocomplete="off"'))}
+      ${fld("tu-role","Role",`<select id="tu-role"${self ? " disabled" : ""}><option value="staff"${u.role === "staff" ? " selected" : ""}>Staff</option><option value="owner"${u.role === "owner" ? " selected" : ""}>Owner</option></select>`, self ? "You can’t change your own role." : "")}
+    </div><div><button type="submit" class="btn primary sm">Save details</button></div></fieldset>
+    <fieldset><legend>Password</legend>
+      <div><button type="button" class="btn sm" data-tact="reset-email">Email them a reset link</button></div>
+      <span class="hint">Or set a new password yourself:</span>
+      <div class="row" style="flex-wrap:nowrap">${inp("tu-pw", "", 'type="text" autocomplete="off" minlength="8" placeholder="New password" style="flex:1"')}<button type="button" class="btn sm" data-act="gen-pw" data-target="tu-pw">Generate</button></div>
+      <div><button type="button" class="btn sm" data-tact="set-pw">Set this password</button></div>
+    </fieldset>
+    ${self ? "" : `<fieldset><legend>Access</legend>
+      <div class="row">${u.status === "disabled" || u.status === "removed" ? '<button type="button" class="btn sm" data-tact="enable">Allow sign-in again</button>' : '<button type="button" class="btn sm" data-tact="disable">Disable sign-in</button>'}
+      ${u.status === "removed" ? "" : '<button type="button" class="btn danger sm" data-tact="remove">Remove from team</button>'}</div>
+      <span class="hint">Disabling blocks sign-in at once and is easy to undo; anyone already signed in is logged out within about an hour. Removing also blocks sign-in and marks them as removed. Nothing is deleted, so “Allow sign-in again” undoes either. Every change here is recorded in History.</span></fieldset>`}
+    <div id="form-err"></div>
+    <div class="sheet-actions"><button type="button" class="btn ghost" data-act="close">Close</button></div>
+  </form>`);
+}
+async function teamDo(btn, action, payload, okMsg, keepOpen){
+  btn.disabled = true; formError("");
+  try { const r = await callTeam(action, payload); if (!keepOpen) closeSheet(true); toast(typeof okMsg === "function" ? okMsg(r) : okMsg); T.list = null; loadTeam(); }
+  catch (e){ formError(e.message); }
+  finally { if (btn.isConnected) btn.disabled = false; }
+}
+async function teamAction(btn){
+  const f = $("#team-edit-form"); if (!f) return;
+  const userId = f.dataset.uid, a = btn.dataset.tact;
+  if (a === "reset-email") return teamDo(btn, "sendReset", {userId}, r => `Reset link sent to ${r.email}`, true);
+  if (a === "set-pw"){ const password = $("#tu-pw").value; if (password.length < 8) return formError("The password needs at least 8 characters."); return teamDo(btn, "setPassword", {userId, password}, "Password changed. Share it with them in person.", true); }
+  if (a === "disable") return teamDo(btn, "setDisabled", {userId, disabled:true}, "Sign-in disabled");
+  if (a === "enable") return teamDo(btn, "setDisabled", {userId, disabled:false}, "Sign-in allowed again");
+  if (a === "remove"){
+    if (!btn.classList.contains("armed")){ btn.classList.add("armed"); btn.textContent = "Tap again to remove"; setTimeout(() => { if (btn.isConnected){ btn.classList.remove("armed"); btn.textContent = "Remove from team"; } }, 4000); return; }
+    return teamDo(btn, "remove", {userId}, "Removed from the team");
+  }
+}
+async function submitTeamAdd(f){
+  const name = $("#ta-name").value.trim(), email = $("#ta-email").value.trim(), role = $("#ta-role").value;
+  const usePw = $("#ta-how-pw").checked, password = usePw ? $("#ta-pw").value : "";
+  if (!name) return formError("Enter their name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return formError("Enter a valid email address.");
+  if (usePw && password.length < 8) return formError("The password needs at least 8 characters, or tap Generate.");
+  await teamDo(f.querySelector("button[type=submit]"), "add", {name, email, role, password}, usePw ? `${name} added. Give them their password.` : `Invitation sent to ${email}`);
+}
+async function submitTeamEdit(f){
+  const u = (T.list || []).find(x => x.id === f.dataset.uid); if (!u) return;
+  const name = $("#tu-name").value.trim(), role = $("#tu-role").value, btn = f.querySelector("button[type=submit]");
+  if (!name) return formError("Enter a name.");
+  btn.disabled = true; formError("");
+  try {
+    if (name !== u.name) await callTeam("rename", {userId:u.id, name});
+    if (role !== u.role && u.id !== T.me) await callTeam("setRole", {userId:u.id, role});
+    closeSheet(true); toast("Saved"); T.list = null; loadTeam();
+  } catch (e){ formError(e.message); btn.disabled = false; }
+}
+
+/* ---------- history: recently deleted + change log (owners) ---------- */
+const H = {log:null, names:{}, loading:false, error:"", filter:"all"};
+const KEEP_DAYS = 30;
+async function loadHistory(){
+  if (S.demo){ H.log = []; return; }
+  H.loading = true; H.error = "";
+  try {
+    const {data, error} = await sb.from("audit_log").select("id,at,actor,actor_email,table_name,row_id,action,old_data,new_data").order("id", {ascending:false}).limit(300);
+    if (error) throw error;
+    H.log = data || [];
+    const ids = [...new Set([...H.log.map(r => r.actor), ...COLLS.flatMap(t => trash[t].map(r => r._deletedBy))].filter(Boolean))];
+    if (ids.length){ const {data: p} = await sb.from("profiles").select("id,full_name").in("id", ids); H.names = Object.fromEntries((p || []).map(x => [x.id, x.full_name])); }
+  } catch (e){ H.error = "Couldn’t load the change log. Check your connection and try again."; }
+  H.loading = false;
+  if (S.view === "history") render();
+}
+const FIELD = {guest:"Guest", phone:"Phone", unit:"Unit", source:"Source", checkIn:"Check-in", checkOut:"Check-out", amount:"Amount", fees:"Fees", guests:"Guests",
+  idType:"ID type", idNumber:"ID number", idDocs:"ID files", meterStart:"Meter in", meterTopup:"Top-up", meterEnd:"Meter out", notes:"Notes", origin:"From", agent:"Agent",
+  type:"Type", category:"Category", date:"Date", note:"Note", kwh:"kWh", day:"Day", role:"Role", full_name:"Name", removed_at:"Removed"};
+function fmtVal(k, v){
+  if (v == null || v === "") return "—";
+  if (k === "amount" || k === "fees") return tsh(v);
+  if (k === "unit") return UNIT_SHORT[v] || v;
+  if (k === "idDocs") return Array.isArray(v) ? v.length + " file(s)" : "—";
+  if (k === "removed_at") return "yes";
+  if (k === "idNumber") return "changed"; // never show ID numbers in the log screen
+  return String(v).slice(0, 40);
+}
+function describeRecord(table, rec){
+  const d = (rec && rec.data) || rec || {};
+  if (table === "bookings") return `Booking · ${d.guest || "Guest"} · ${UNIT_SHORT[d.unit] || ""} ${dLabel(d.checkIn)} → ${dLabel(d.checkOut)}`;
+  if (table === "transactions") return `${d.type === "income" ? "Money in" : "Expense"} · ${EXP[d.category] || INC[d.category] || d.category || ""} · ${tsh(d.amount)}${d.date ? " · " + dLabel(d.date) : ""}`;
+  if (table === "recurring") return `Recurring cost · ${EXP[d.category] || d.category || ""} · ${tsh(d.amount)}`;
+  if (table === "profiles") return `Team member · ${rec && rec.full_name || ""}`;
+  if (table === "team") return `Team · ${d.email || ""}`;
+  return table;
+}
+function changes(o, n){
+  const a = (o && (o.data || o)) || {}, b = (n && (n.data || n)) || {};
+  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => FIELD[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k]));
+  return keys.slice(0, 5).map(k => `${FIELD[k]}: ${fmtVal(k, a[k])} → ${fmtVal(k, b[k])}`).join(" · ") + (keys.length > 5 ? ` · +${keys.length - 5} more` : "");
+}
+const ACTION = {create:["Added","pill ok"], edit:["Changed","pill"], delete:["Deleted","pill bad"], restore:["Restored","pill ok"], purge:["Cleared after 30 days","pill"], remove:["Removed","pill bad"]};
+const who = (id, email) => (id && H.names[id]) || email || (id ? "Unknown person" : "System");
+function vHistory(){
+  const tr = TRASH();
+  const items = COLLS.flatMap(t => tr[t].map(r => ({t, r}))).sort((x, y) => (y.r._deletedAt || "").localeCompare(x.r._deletedAt || ""));
+  const daysLeft = iso => Math.max(0, KEEP_DAYS - Math.floor((Date.now() - new Date(iso).getTime()) / 864e5));
+  const binCard = `<div class="card"><div><h2>Recently deleted</h2><span class="small muted">Deleted bookings, money entries and recurring costs are kept for ${KEEP_DAYS} days and can be restored. After that the nightly backup job clears them (they stay inside older backups).</span></div>
+    ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>What</th><th>Deleted</th><th>By</th><th class="n">Days left</th><th></th></tr></thead><tbody>
+      ${items.map(({t, r}) => `<tr><td>${esc(describeRecord(t, r))}</td><td>${dLabelY((r._deletedAt || "").slice(0,10))}</td><td>${esc(who(r._deletedBy))}</td><td class="n">${daysLeft(r._deletedAt)}</td>
+        <td class="n"><button class="btn sm" data-restore="${t}|${esc(r.id)}">Restore</button></td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">Nothing deleted in the last ${KEEP_DAYS} days.</div>`}</div>`;
+  const groups = {all:"Everything", bookings:"Bookings", transactions:"Money", recurring:"Recurring", people:"Team"};
+  const chips = `<div class="seg" role="group" aria-label="Show">${Object.entries(groups).map(([k,l]) => `<button type="button" id="hf-${k}" data-log-filter="${k}" aria-pressed="${H.filter === k}">${l}</button>`).join("")}</div>`;
+  let logBody;
+  if (S.demo) logBody = `<div class="empty">The change log is recorded on the live system only.</div>`;
+  else if (H.error) logBody = `<div class="errbox">${esc(H.error)}</div>`;
+  else if (!H.log) logBody = `<div class="empty">Loading the change log…</div>`;
+  else {
+    const rows = H.log.filter(r => H.filter === "all" || (H.filter === "people" ? (r.table_name === "profiles" || r.table_name === "team") : r.table_name === H.filter));
+    logBody = rows.length ? `<div class="tbl-wrap tall"><table><thead><tr><th>When</th><th>Who</th><th>What happened</th></tr></thead><tbody>
+      ${rows.map(r => { const [label, cls] = ACTION[r.action] || [r.action.replace(/^team\./, "Team: "), "pill"]; const rec = r.new_data || r.old_data;
+        const detail = r.action === "edit" ? changes(r.old_data, r.new_data) : r.table_name === "team" ? esc((r.new_data && r.new_data.detail) || "") : "";
+        return `<tr><td style="white-space:nowrap">${dLabelY(r.at.slice(0,10))} ${new Date(r.at).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</td><td>${esc(who(r.actor, r.actor_email))}</td>
+          <td><span class="${cls}">${esc(label)}</span> ${esc(describeRecord(r.table_name, rec))}${detail ? `<div class="small muted">${esc(detail)}</div>` : ""}</td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty">No changes recorded yet${H.filter === "all" ? "" : " for this filter"}.</div>`;
+  }
+  const logCard = `<div class="card"><div class="spread"><div><h2>Change log</h2><span class="small muted">Every add, change, delete and restore, with who did it. Nobody can edit or erase this log. Latest 300 shown.</span></div><div class="row">${chips}<button class="btn ghost sm" data-act="history-reload">Refresh</button></div></div>${logBody}</div>`;
+  return binCard + logCard;
+}
+
 /* ---------- sign-in ---------- */
 const authMsg = (html, kind = "errbox") => { $("#auth-msg").innerHTML = html ? `<div class="${kind}">${html}</div>` : ""; };
 const redirectTo = () => location.origin + location.pathname;
@@ -1315,7 +1551,7 @@ async function start(user){
     S.role = p.role; S.name = p.full_name || "";
     S.demo = false; S.loaded = false;
     showApp(); render();
-    await Promise.all(COLLS.map(t => fetchAll(t).then(rows => { live[t] = rows; }).catch(e => console.warn("load " + t, e))));
+    await Promise.all(COLLS.map(t => fetchAll(t).then(rows => setRows(t, rows)).catch(e => console.warn("load " + t, e))));
     S.loaded = true; render();
     let pending = {};
     channel = sb.channel("stayover-live");
@@ -1327,8 +1563,9 @@ async function start(user){
 }
 function signedOut(){
   if (channel && sb) sb.removeChannel(channel); channel = null;
-  S.user = null; S.role = null; S.loaded = false; closeSheet(true);
-  for (const t of COLLS) live[t] = [];
+  S.user = null; S.role = null; S.loaded = false; closeSheet(true); resetTeam();
+  for (const t of COLLS){ live[t] = []; trash[t] = []; }
+  H.log = null;
   for (const k in urlCache) delete urlCache[k];
   if (!S.demo) showAuth("You’re signed out.");
 }

@@ -1,0 +1,29 @@
+# Throwaway local Supabase used ONLY as a test copy for restore checks in GitHub Actions.
+# It is created, filled from a backup, checked and destroyed on every run. Never real data at rest.
+project_id = "stayover-testcopy"
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[analytics]
+enabled = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"

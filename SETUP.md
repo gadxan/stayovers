@@ -77,11 +77,26 @@ The public key is designed to be visible in the browser; the security rules prot
 
 To update the site later, drag the folder onto **Deploys** in your Netlify site.
 
-## 7. Add your staff
+## 7. Manage your team from the app
 
-**Authentication → Users → Invite user** and enter their email. They get an email, tap the link, and the app asks them to choose a password. New people are **staff** automatically.
+Owners have a **Team** tab in the app. From it you can:
 
-To remove someone, delete them under **Authentication → Users**. They lose access immediately.
+- **Add a person**: send an invitation email (they choose their own password), or set a password yourself and give it to them.
+- **Change roles** between Owner and Staff.
+- **Reset a password**: email them a reset link, or set a new one.
+- **Disable sign-in** or **remove** someone. Both block their login and both can be undone: logins are never deleted, and their bookings and entries stay. Every team change is recorded in the **History** tab.
+
+You can't demote, disable or remove yourself, and the last owner can't be demoted, so the business can't be locked out.
+
+The Team tab uses a small server function, `supabase/functions/team-admin`, because changing logins needs Supabase's secret key, which must never be in the browser. To deploy it with the Supabase CLI:
+
+```bash
+supabase functions deploy team-admin --no-verify-jwt --project-ref YOUR-PROJECT-ID
+```
+
+`--no-verify-jwt` is required with the new `sb_` keys. The function checks the caller's session itself and only lets owners through.
+
+You can still manage people under **Authentication → Users** in Supabase.
 
 Supabase's built-in email service only sends a few emails per hour. That's enough for a small team. If invites or "Forgot password" emails stop arriving, wait an hour, or connect your own email under **Authentication → Emails → SMTP Settings**.
 
