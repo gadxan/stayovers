@@ -1,0 +1,173 @@
+# Nightly backup of Stayover Mikocheni.
+#  1. Dumps the whole database (logins, bookings, money, settings) and downloads every guest-ID file.
+#  2. Checks the dump against the live row counts.
+#  3. Restores it into a throwaway test copy, checks every table and file again, and times it.
+#  4. Encrypts it with the PUBLIC backup key (only the private key, kept off this repo, can open it).
+#  5. Uploads it to Backblaze B2, where object lock stops anyone deleting it for 30 days.
+#  6. Only then clears items deleted more than 30 days ago.
+# A failure emails the repository owner (GitHub default) and, if set, pings Healthchecks.io.
+# This repository is public: nothing in this job may print data, names or secrets.
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: "15 21 * * *"   # 00:15 in Dar es Salaam (UTC+3)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stayover-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      # write-only B2 key: can add backups, cannot read or delete them
+      B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check settings
+        run: |
+          missing=""
+          for v in PROD_DB_URL SUPABASE_URL SUPABASE_SECRET_KEY B2_APPLICATION_KEY_ID B2_APPLICATION_KEY B2_BUCKET; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          [ -f backup/backup-public-cert.pem ] || missing="$missing backup/backup-public-cert.pem"
+          if [ -n "$missing" ]; then
+            echo "::error title=Backup not set up::Missing:$missing (see docs/BACKUPS.md)"; exit 1
+          fi
+          if [ -n "$HEALTHCHECK_URL" ]; then curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/start" > /dev/null || true; fi
+          echo "DAY=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+          echo "STAMP=$(date -u +%Y-%m-%dT%H%MZ)" >> "$GITHUB_ENV"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client > /dev/null
+          python3 -m pip install --quiet --user 'b2>=4,<5'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Dump the database
+        run: |
+          set -euo pipefail
+          B="work/stayover-$STAMP"; echo "B=$B" >> "$GITHUB_ENV"
+          mkdir -p "$B/db" "$B/files"
+          psql --no-psqlrc -At -f scripts/backup/counts.sql "$PROD_DB_URL" > "$B/live-counts-before.csv"
+          supabase db dump --db-url "$PROD_DB_URL" -f "$B/db/roles.sql" --role-only
+          supabase db dump --db-url "$PROD_DB_URL" -f "$B/db/schema.sql"
+          supabase db dump --db-url "$PROD_DB_URL" -f "$B/db/data.sql" --use-copy --data-only \
+            -x "storage.buckets_vectors" -x "storage.vector_indexes"
+          psql --no-psqlrc -At -f scripts/backup/counts.sql "$PROD_DB_URL" > "$B/live-counts-after.csv"
+          bash scripts/backup/dump-counts.sh "$B/db/data.sql" > "$B/dump-counts.csv"
+
+      - name: Check the dump has every row
+        run: |
+          set -euo pipefail
+          # Each table in the dump must have between the live count before and after the dump
+          # (rows only ever get added during a dump: deletes are soft until the clean-up step).
+          awk -F, '
+            FILENAME ~ /before/ { lo[$1] = $2; next }
+            FILENAME ~ /after/  { hi[$1] = $2; next }
+            { seen[$1] = 1
+              if (($1 in lo) && ($2 < lo[$1] || $2 > hi[$1])) { printf "::error::%s has %s rows in the dump, live had %s to %s\n", $1, $2, lo[$1], hi[$1]; bad++ } }
+            END {
+              for (t in lo) if (!(t in seen) && lo[t] > 0 && t !~ /^storage\.buckets$/) { printf "::error::%s (%s rows) is missing from the dump\n", t, lo[t]; bad++ }
+              exit bad > 0 }
+          ' "$B/live-counts-before.csv" "$B/live-counts-after.csv" "$B/dump-counts.csv"
+          echo "Dump matches the live database: $(wc -l < "$B/dump-counts.csv") tables."
+
+      - name: Download guest ID files
+        run: node scripts/backup/storage-export.mjs "$B/files"
+
+      - name: Check every ID file was downloaded
+        run: |
+          set -euo pipefail
+          want=$(grep '^storage.objects,' "$B/live-counts-after.csv" | cut -d, -f2)
+          got=$(node -e 'console.log(require(process.argv[1]).count)' "$PWD/$B/files-manifest.json")
+          lo=$(grep '^storage.objects,' "$B/live-counts-before.csv" | cut -d, -f2)
+          if [ "$got" -lt "$lo" ] || [ "$got" -gt "$want" ]; then
+            echo "::error::Downloaded $got ID files but storage has $lo to $want"; exit 1
+          fi
+          echo "All $got ID files downloaded."
+
+      - name: Seal the backup contents
+        run: |
+          set -euo pipefail
+          rows=$(awk -F, '{s+=$2} END {print s+0}' "$B/dump-counts.csv")
+          files=$(node -e 'console.log(require(process.argv[1]).count)' "$PWD/$B/files-manifest.json")
+          cat > "$B/manifest.json" <<EOF
+          {"app": "stayover-mikocheni", "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)", "rows": $rows, "files": $files,
+           "tables": $(wc -l < "$B/dump-counts.csv"), "git_commit": "$GITHUB_SHA"}
+          EOF
+          ( cd "$B" && find . -type f ! -name checksums.sha256 -print0 | sort -z | xargs -0 shasum -a 256 > checksums.sha256 )
+
+      - name: Encrypt
+        run: |
+          set -euo pipefail
+          tar -czf "work/stayover-$STAMP.tar.gz" -C work "stayover-$STAMP"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "work/stayover-$STAMP.tar.gz" -out "work/stayover-$STAMP.tar.gz.cms" backup/backup-public-cert.pem
+          rm -f "work/stayover-$STAMP.tar.gz"
+          shasum -a 256 "work/stayover-$STAMP.tar.gz.cms" | cut -d' ' -f1 > "work/stayover-$STAMP.sha256"
+          echo "SIZE=$(wc -c < "work/stayover-$STAMP.tar.gz.cms")" >> "$GITHUB_ENV"
+
+      - name: Upload to Backblaze B2 (locked)
+        run: |
+          set -euo pipefail
+          b2 account authorize > /dev/null
+          b2 file upload "$B2_BUCKET" "work/stayover-$STAMP.tar.gz.cms" "daily/stayover-$STAMP.tar.gz.cms" > /dev/null
+          b2 file upload "$B2_BUCKET" "work/stayover-$STAMP.sha256" "daily/stayover-$STAMP.sha256" > /dev/null
+          echo "Uploaded daily/stayover-$STAMP.tar.gz.cms ($SIZE bytes)."
+
+      # The backup is already stored. This proves it can be restored: a throwaway local Supabase
+      # is started, filled from the backup, every table and ID file compared, and the time recorded.
+      - name: Test restore into a throwaway copy (timed)
+        run: |
+          set -euo pipefail
+          cd ci/testcopy
+          supabase start -x studio,imgproxy,inbucket,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta > /dev/null
+          eval "$(supabase status -o env | sed 's/^/export /')"
+          cd "$GITHUB_WORKSPACE"
+          TARGET_DB_URL="$DB_URL" TARGET_URL="$API_URL" TARGET_KEY="${SECRET_KEY:-$SERVICE_ROLE_KEY}" \
+            bash scripts/backup/restore-core.sh "$B"
+          . work/restore-timing.env
+          echo "RESTORE_SECONDS=$RESTORE_SECONDS" >> "$GITHUB_ENV"
+          (cd ci/testcopy && supabase stop --no-backup > /dev/null)
+          rm -rf "$B"
+
+      - name: Clear items deleted more than 30 days ago
+        run: |
+          set -euo pipefail
+          psql --no-psqlrc -At -c "select file_path from public.purge_deleted(30)" "$PROD_DB_URL" > work/purge.txt
+          node scripts/backup/storage-purge.mjs work/purge.txt
+
+      - name: Report
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "::notice title=Backup OK::stayover-$STAMP stored in B2 ($SIZE bytes). Test restore took ${RESTORE_SECONDS}s and matched every table and file."
+            {
+              echo "### Backup OK — $STAMP"
+              echo "- Stored encrypted in Backblaze B2 as \`daily/stayover-$STAMP.tar.gz.cms\` ($SIZE bytes)"
+              echo "- Test restore into a throwaway copy: **${RESTORE_SECONDS}s**, every table and ID file matched"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$HEALTHCHECK_URL" ]; then curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL" > /dev/null || true; fi
+          else
+            echo "::error title=Backup FAILED::Last night's Stayover backup did not complete. Open this run to see which step failed."
+            if [ -n "$HEALTHCHECK_URL" ]; then curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/fail" > /dev/null || true; fi
+          fi

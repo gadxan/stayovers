@@ -1,0 +1,108 @@
+# Full restore drill: takes the LATEST backup from Backblaze B2 (exactly what you would use in a
+# disaster), decrypts it with the private key, restores it into a throwaway Supabase copy, checks
+# every table and ID file, and reports how long it took.
+#
+# The private key is only available to this workflow if you add it as the secret
+# BACKUP_PRIVATE_KEY in the GitHub environment "restore-drill" (see docs/BACKUPS.md). Give that
+# environment yourself as "required reviewer" so a drill only runs after you approve it.
+# Runs on demand, and every Sunday (it then waits for your approval).
+name: Restore drill
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 0"   # Sunday 09:00 in Dar es Salaam
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    runs-on: ubuntu-24.04
+    environment: restore-drill
+    timeout-minutes: 45
+    env:
+      # read-only B2 key: can download backups, cannot change or delete anything
+      B2_APPLICATION_KEY_ID: ${{ secrets.B2_READ_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_READ_KEY }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      BACKUP_PRIVATE_KEY: ${{ secrets.BACKUP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check settings
+        run: |
+          for v in B2_APPLICATION_KEY_ID B2_APPLICATION_KEY B2_BUCKET BACKUP_PRIVATE_KEY; do
+            [ -n "${!v}" ] || { echo "::error title=Drill not set up::$v is missing (see docs/BACKUPS.md)"; exit 1; }
+          done
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client > /dev/null
+          python3 -m pip install --quiet --user 'b2>=4,<5'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the latest backup from B2
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          b2 account authorize > /dev/null
+          latest=$(b2 ls "b2://$B2_BUCKET/daily/" | grep '\.tar\.gz\.cms$' | sort | tail -1)
+          [ -n "$latest" ] || { echo "::error::No backups found in B2"; exit 1; }
+          name=$(basename "$latest" .tar.gz.cms)
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          t0=$(date +%s)
+          b2 file download "b2://$B2_BUCKET/daily/$name.tar.gz.cms" "work/$name.tar.gz.cms" > /dev/null
+          b2 file download "b2://$B2_BUCKET/daily/$name.sha256" "work/$name.sha256" > /dev/null
+          [ "$(shasum -a 256 "work/$name.tar.gz.cms" | cut -d' ' -f1)" = "$(cat "work/$name.sha256")" ] \
+            || { echo "::error::Downloaded backup does not match its checksum"; exit 1; }
+          echo "T0=$t0" >> "$GITHUB_ENV"
+          echo "Fetched $name ($(wc -c < "work/$name.tar.gz.cms") bytes)."
+
+      - name: Decrypt with the private key
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$BACKUP_PRIVATE_KEY" > "$RUNNER_TEMP/key.pem"
+          openssl cms -decrypt -binary -inform DER -in "work/$NAME.tar.gz.cms" -inkey "$RUNNER_TEMP/key.pem" -out "work/$NAME.tar.gz" \
+            || { rm -f "$RUNNER_TEMP/key.pem"; echo "::error::Decryption failed: wrong private key or damaged backup"; exit 1; }
+          rm -f "$RUNNER_TEMP/key.pem"
+          tar -xzf "work/$NAME.tar.gz" -C work
+
+      - name: Restore into a throwaway copy and check everything
+        run: |
+          set -euo pipefail
+          cd ci/testcopy
+          supabase start -x studio,imgproxy,inbucket,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta > /dev/null
+          eval "$(supabase status -o env | sed 's/^/export /')"
+          cd "$GITHUB_WORKSPACE"
+          TARGET_DB_URL="$DB_URL" TARGET_URL="$API_URL" TARGET_KEY="${SECRET_KEY:-$SERVICE_ROLE_KEY}" \
+            bash scripts/backup/restore-core.sh "work/$NAME" | tee work/drill.log
+          . work/restore-timing.env
+          total=$(( $(date +%s) - T0 ))
+          rows=$(grep -o '"rows": *[0-9]*' "work/$NAME/manifest.json" | grep -o '[0-9]*$')
+          files=$(grep -o '"files": *[0-9]*' "work/$NAME/manifest.json" | grep -o '[0-9]*$')
+          match=$(grep 'table(s) match' work/drill.log)
+          echo "::notice title=Restore drill PASSED::Backup $NAME: $rows rows and $files ID files restored. $match. Restore ${RESTORE_SECONDS}s (database ${RESTORE_DB_SECONDS}s, files ${RESTORE_FILES_SECONDS}s); download+decrypt+restore ${total}s."
+          {
+            echo "### Restore drill passed"
+            echo "| | |"; echo "|---|---|"
+            echo "| Backup | \`$NAME\` (latest in B2) |"
+            echo "| Rows restored | $rows |"
+            echo "| ID files restored and checked | $files |"
+            echo "| Tables | $match |"
+            echo "| Database restore | ${RESTORE_DB_SECONDS}s |"
+            echo "| ID files restore | ${RESTORE_FILES_SECONDS}s |"
+            echo "| Download + decrypt + restore | ${total}s |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          (cd ci/testcopy && supabase stop --no-backup > /dev/null)
+          rm -rf work
+
+      - name: Report failure
+        if: failure()
+        run: echo "::error title=Restore drill FAILED::The latest backup could not be fully restored. Open this run to see which step failed."
