@@ -33,7 +33,7 @@ grab() { # $1 = prompt, $2 = regex
 echo "== Step 1 of 4: master key (used for this run only) =="
 MID=$(grab "Copy the MASTER keyID." '^[0-9a-f]{12}$|^[0-9a-f]{25}$')
 echo "  ✓ keyID read (${#MID} characters)"
-MKEY=$(grab "Copy the MASTER applicationKey." '^[A-Za-z0-9+/]{31}$')
+MKEY=$(grab "Copy the MASTER applicationKey." '^[A-Za-z0-9+/]{31}$|^[A-Za-z0-9+/]{42}$')
 echo "  ✓ applicationKey read (${#MKEY} characters)"
 
 export B2_ACCOUNT_INFO="$WORK/master.sqlite"
