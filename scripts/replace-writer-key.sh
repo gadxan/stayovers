@@ -20,21 +20,25 @@ WORK=$(mktemp -d)
 cleanup() { rm -rf "$WORK"; unset B2_APPLICATION_KEY_ID B2_APPLICATION_KEY; pbcopy </dev/null; }
 trap cleanup EXIT
 
-grab() { # $1 = prompt, $2 = regex
-  local v
-  while true; do
-    read -r -p "$1 Then press Enter: " _
-    v=$(pbpaste | tr -d '[:space:]')
-    if [[ "$v" =~ $2 ]]; then printf '%s' "$v"; return; fi
-    echo "  ✗ That doesn't look right (length ${#v}). Copy it again." >&2
-  done
-}
-
 echo "== Step 1 of 4: master key (used for this run only) =="
-MID=$(grab "Copy the MASTER keyID." '^[0-9a-f]{12}$|^[0-9a-f]{25}$')
-echo "  ✓ keyID read (${#MID} characters)"
-MKEY=$(grab "Copy the MASTER applicationKey." '^[A-Za-z0-9+/]{31}$|^[A-Za-z0-9+/]{42}$')
-echo "  ✓ applicationKey read (${#MKEY} characters)"
+echo "Copy the master keyID and the master applicationKey, one at a time, in any order."
+echo "Press Enter after each copy."
+MID=""; MKEY=""
+while [[ -z "$MID" || -z "$MKEY" ]]; do
+  if [[ -z "$MID" && -z "$MKEY" ]]; then need="either one"
+  elif [[ -z "$MID" ]]; then need="the keyID"
+  else need="the applicationKey"; fi
+  read -r -p "Copy $need, then press Enter: " _
+  v=$(pbpaste | tr -d '[:space:]')
+  if [[ "$v" =~ ^[0-9a-f]{12}$|^[0-9a-f]{25}$ ]]; then
+    MID=$v; echo "  ✓ keyID read (${#v} characters)"
+  elif [[ "$v" =~ ^[A-Za-z0-9+/]{31}$|^[A-Za-z0-9+/]{42}$ ]]; then
+    MKEY=$v; echo "  ✓ applicationKey read (${#v} characters)"
+  else
+    echo "  ✗ The clipboard holds neither (length ${#v}). Copy again."
+  fi
+done
+unset v
 
 export B2_ACCOUNT_INFO="$WORK/master.sqlite"
 B2_APPLICATION_KEY_ID=$MID B2_APPLICATION_KEY=$MKEY "$B2" account authorize >/dev/null
